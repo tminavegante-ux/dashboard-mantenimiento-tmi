@@ -276,6 +276,52 @@ with tab_horometros:
             )
 
     st.markdown("---")
+
+    st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
+    
+    # Agrupar todas las horas del equipo por mes/año
+    df_equipo_todos = df_horometro_equipo.copy()
+    df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
+    
+    if not df_equipo_todos.empty:
+        df_mensual = (df_equipo_todos
+                      .groupby(['ANIO', 'MES_NUM'])['HRS_OPERADAS']
+                      .sum()
+                      .reset_index())
+        df_mensual['MES_NOMBRE'] = df_mensual['MES_NUM'].map(dicc_meses)
+        df_mensual['PERIODO'] = df_mensual['MES_NOMBRE'] + " " + df_mensual['ANIO'].astype(str)
+        df_mensual = df_mensual.sort_values(['ANIO', 'MES_NUM'])
+        
+        # Marcar el mes seleccionado para resaltarlo
+        df_mensual['ES_MES_ACTUAL'] = (
+            (df_mensual['MES_NUM'] == mes_sel_num)
+        ).map({True: "⭐ Mes Actual", False: "Otros meses"})
+        
+        fig_mensual = px.bar(
+            df_mensual,
+            x='PERIODO',
+            y='HRS_OPERADAS',
+            color='ES_MES_ACTUAL',
+            color_discrete_map={
+                "⭐ Mes Actual": "#F6AD55",
+                "Otros meses": "#5A6B7D"
+            },
+            text='HRS_OPERADAS',
+            labels={'HRS_OPERADAS': 'Horas Operadas', 'PERIODO': 'Mes'},
+            template="plotly_dark"
+        )
+        fig_mensual.update_traces(texttemplate='%{text:.0f} h', textposition='outside')
+        fig_mensual.update_layout(
+            showlegend=False,
+            xaxis_title="Mes",
+            yaxis_title="Horas Operadas",
+            height=400
+        )
+        st.plotly_chart(fig_mensual, use_container_width=True)
+    else:
+        st.info("Sin registros de horas para este equipo.")
+    
+    st.markdown("---")
     g1, g2 = st.columns(2)
 
     with g1:
