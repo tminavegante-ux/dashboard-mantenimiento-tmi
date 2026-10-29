@@ -231,20 +231,40 @@ with tab_horometros:
                        .reset_index())
             dias_operativos = (df_dias['STATUS_EQUIPO'] == 'OPERATIVO').sum()
             dias_inoperativos = (df_dias['STATUS_EQUIPO'] == 'INOPERATIVO').sum()
+            total_dias = dias_operativos + dias_inoperativos
 
             st.markdown(
                 f"""
                 <div style="padding:0;">
-                    <div style="font-size:14px;color:#fafafa;margin-bottom:4px;">
+                    <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
                         Días Operativos / Inoperativos
                     </div>
-                    <div style="display:flex;gap:12px;align-items:baseline;">
-                        <span style="font-size:32px;font-weight:600;color:#48BB78;">{dias_operativos}</span>
-                        <span style="font-size:20px;color:#666;">/</span>
-                        <span style="font-size:32px;font-weight:600;color:#F56565;">{dias_inoperativos}</span>
-                    </div>
-                    <div style="font-size:12px;color:#888;margin-top:2px;">
-                        Total: {dias_operativos + dias_inoperativos} días
+                    <div style="display:flex;gap:24px;align-items:center;">
+                        <div style="text-align:center;min-width:60px;">
+                            <div style="font-size:32px;font-weight:600;color:#48BB78;line-height:1;">
+                                {dias_operativos}
+                            </div>
+                            <div style="font-size:11px;color:#48BB78;margin-top:2px;">
+                                OPERATIVOS
+                            </div>
+                        </div>
+                        <div style="font-size:20px;color:#666;">/</div>
+                        <div style="text-align:center;min-width:60px;">
+                            <div style="font-size:32px;font-weight:600;color:#F56565;line-height:1;">
+                                {dias_inoperativos}
+                            </div>
+                            <div style="font-size:11px;color:#F56565;margin-top:2px;">
+                                INOPERATIVOS
+                            </div>
+                        </div>
+                        <div style="text-align:center;min-width:80px;border-left:1px solid #333;padding-left:16px;">
+                            <div style="font-size:28px;font-weight:600;color:#fafafa;line-height:1;">
+                                {total_dias}
+                            </div>
+                            <div style="font-size:11px;color:#aaa;margin-top:2px;">
+                                TOTAL DÍAS
+                            </div>
+                        </div>
                     </div>
                 </div>
                 """,
@@ -254,7 +274,7 @@ with tab_horometros:
             st.markdown(
                 """
                 <div style="padding:0;">
-                    <div style="font-size:14px;color:#fafafa;margin-bottom:4px;">
+                    <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
                         Días Operativos / Inoperativos
                     </div>
                     <div style="font-size:32px;font-weight:600;color:#666;">0 / 0</div>
