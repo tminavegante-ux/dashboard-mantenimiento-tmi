@@ -259,7 +259,7 @@ with tab_horometros:
                 color='ES_SELECCIONADO',
                 color_discrete_map={
                     "⭐ SELECCIONADO": "#F6AD55",
-                    "Resto de flota": "#E8A87C"
+                    "Resto de flota": "#4A5568"
                 },
                 labels={'HRS_OPERADAS': 'Horas Acumuladas', 'NOMBR': 'Equipo'},
                 text='HRS_OPERADAS',
