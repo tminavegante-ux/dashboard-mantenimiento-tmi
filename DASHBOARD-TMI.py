@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.image("tmi2026.png", width=250)          # ← NUEVA LÍNEA
+st.sidebar.image("tmi2026.png", width=200)
 st.title("CONTROL NEW MING 2026")
 st.markdown("---")
 
