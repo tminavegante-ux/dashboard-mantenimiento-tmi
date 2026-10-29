@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("Sistema Integrado de Gestión de Activos y Confiabilidad")
+st.title("CONTROL NEW MING 2026")
 st.markdown("---")
 
 # ==========================================
@@ -404,7 +404,7 @@ with tab_neumaticos:
         k4.metric("Neumáticos en Alerta", f"{n_alertas} / {len(pivot)}")
 
         st.markdown("---")
-        st.subheader("🗺️ Mapa de Neumáticos (Vista Superior)")
+        st.subheader(" Mapa de Neumáticos")
 
         def _fila_pivote(pos_key):
             fila = pivot[pivot['POSICION'] == pos_key]
@@ -443,7 +443,7 @@ with tab_neumaticos:
                         unsafe_allow_html=True)
 
         st.caption(
-            "🎨 **Leyenda:** Cada llanta muestra dos bandas de cocada — "
+            " **Leyenda:** Cada llanta muestra dos bandas de cocada — "
             "**INT** (lado hacia el chasis) y **EXT** (lado hacia afuera). "
             f"La altura es proporcional a los mm restantes (máx. {COCADA_NUEVA_MAX:.0f} mm). "
             "🟢 ≥12mm · 🟡 8-12mm · 🔴 <8mm · 🟨 borde amarillo = requiere rotación."
@@ -466,7 +466,7 @@ with tab_neumaticos:
                 )
 
         st.markdown("---")
-        st.subheader("📈 Tendencia Histórica de Desgaste (mm)")
+        st.subheader("Tendencia Histórica de Desgaste (mm)")
         df_trend = df_n_equipo.copy()
         fig_trend = go.Figure()
         colores = {
@@ -639,7 +639,7 @@ with tab_engrase:
 
         st.markdown("---")
 
-        st.subheader("📅 Calendario de Cumplimiento del Mes")
+        st.subheader("Calendario de Cumplimiento del Mes")
 
         if mes_sel_num and not df_e_mes.empty:
             anio_ref = df_e_mes['ANIO'].mode().iloc[0] if not df_e_mes.empty else pd.Timestamp.now().year
@@ -700,7 +700,7 @@ with tab_engrase:
 
         st.markdown("---")
 
-        st.subheader("📈 Tendencia Mensual de Engrase")
+        st.subheader("Tendencia Mensual de Engrase")
         df_mes = df_e_equipo.groupby(['ANIO', 'MES_NUM']).agg(
             registros=('FECHA', 'count'),
             cumplimiento_prom=('PCT_CUMPLIMIENTO', 'mean'),
