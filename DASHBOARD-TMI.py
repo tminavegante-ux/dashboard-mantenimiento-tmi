@@ -320,7 +320,7 @@ with tab_horometros:
             st.info("No hay datos de flota para este período.")
         st.markdown("---")  
  # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
-    st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
+    st.subheader(f"Rendimiento Mensual - {nombre_seleccionado}")
     df_equipo_todos = df_horometro_equipo.copy()
     df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
 
