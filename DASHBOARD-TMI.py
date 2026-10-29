@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.title("📊 Sistema Integrado de Gestión de Activos y Confiabilidad")
+st.title("Sistema Integrado de Gestión de Activos y Confiabilidad")
 st.markdown("---")
 
 # ==========================================
