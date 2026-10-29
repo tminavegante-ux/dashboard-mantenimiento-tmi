@@ -210,7 +210,7 @@ tab_horometros, tab_neumaticos, tab_componentes, tab_engrase = st.tabs([
 with tab_horometros:
     st.header(f"Análisis de Utilización - {nombre_seleccionado}")
 
-    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
         total_hrs = df_h_filtrado_equipo['HRS_OPERADAS'].sum() if not df_h_filtrado_equipo.empty else 0
         st.metric("Horas Operadas (Mes Seleccionado)", f"{total_hrs:,.1f} Hrs")
@@ -222,6 +222,25 @@ with tab_horometros:
         status_actual = (df_h_filtrado_equipo.sort_values('FECHA').iloc[-1]['STATUS_EQUIPO']
                          if not df_h_filtrado_equipo.empty else "SIN REGISTRO")
         st.metric("Último Estado Operativo", str(status_actual).upper())
+    with kpi4:
+        # Calcular días operativos e inoperativos del mes
+        if not df_h_filtrado_equipo.empty:
+            # Un día por fecha única (aunque haya 2 turnos)
+            df_dias = (df_h_filtrado_equipo
+                       .assign(DIA=df_h_filtrado_equipo['FECHA'].dt.date)
+                       .groupby('DIA')['STATUS_EQUIPO']
+                       .agg(lambda s: 'OPERATIVO' if (s == 'OPERATIVO').any() else 'INOPERATIVO')
+                       .reset_index())
+            dias_operativos = (df_dias['STATUS_EQUIPO'] == 'OPERATIVO').sum()
+            dias_inoperativos = (df_dias['STATUS_EQUIPO'] == 'INOPERATIVO').sum()
+            st.metric(
+                "Días Operativos / Inoperativos",
+                f"{dias_operativos} / {dias_inoperativos}",
+                delta=f"Total: {dias_operativos + dias_inoperativos} días",
+                delta_color="off"
+            )
+        else:
+            st.metric("Días Operativos / Inoperativos", "0 / 0")
 
     st.markdown("---")
     g1, g2 = st.columns(2)
