@@ -269,8 +269,57 @@ with tab_horometros:
             )
 
     st.markdown("---")
+    # --- Gráficos: Desempeño Diario + Comparativa de Flota ---
+    g1, g2 = st.columns(2)
 
-    # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
+    with g1:
+        st.subheader(f"Desempeño Diario: {nombre_seleccionado}")
+        if not df_h_filtrado_equipo.empty:
+            fig_linea = px.line(
+                df_h_filtrado_equipo.sort_values('FECHA'),
+                x='FECHA', y='HRS_OPERADAS', color='TURNO',
+                labels={'HRS_OPERADAS': 'Horas Trabajadas', 'FECHA': 'Día'},
+                markers=True, template="plotly_dark"
+            )
+            st.plotly_chart(fig_linea, use_container_width=True)
+        else:
+            st.info("Sin registros de horas para este equipo en el mes seleccionado.")
+
+    with g2:
+        st.subheader("Comparativa de Horas Totales: Toda la Flota")
+        if not df_h_filtrado_mes.empty:
+            df_resumen_flota = (df_h_filtrado_mes.groupby('ID_EQUIPO')['HRS_OPERADAS']
+                                .sum().reset_index())
+            df_resumen_flota = df_resumen_flota.merge(df_equipos, on='ID_EQUIPO', how='left')
+
+            df_resumen_flota['ES_SELECCIONADO'] = (
+                df_resumen_flota['ID_EQUIPO'] == id_equipo_sel
+            ).map({True: "⭐ SELECCIONADO", False: "Resto de flota"})
+
+            df_resumen_flota = df_resumen_flota.sort_values('HRS_OPERADAS', ascending=True)
+
+            fig_barra = px.bar(
+                df_resumen_flota,
+                x='HRS_OPERADAS', y='NOMBR',
+                orientation='h',
+                color='ES_SELECCIONADO',
+                color_discrete_map={
+                    "⭐ SELECCIONADO": "#F6AD55",
+                    "Resto de flota": "#5A6B7D"
+                },
+                labels={'HRS_OPERADAS': 'Horas Acumuladas', 'NOMBR': 'Equipo'},
+                text='HRS_OPERADAS',
+                template="plotly_dark"
+            )
+            fig_barra.update_traces(texttemplate='%{text:.1f} h', textposition='outside')
+            fig_barra.update_layout(showlegend=False,
+                                     xaxis_title="Horas Acumuladas",
+                                     yaxis_title="Equipo")
+            st.plotly_chart(fig_barra, use_container_width=True)
+        else:
+            st.info("No hay datos de flota para este período.")
+        st.markdown("---")  
+ # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
     st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
     df_equipo_todos = df_horometro_equipo.copy()
     df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
@@ -345,56 +394,6 @@ with tab_horometros:
         st.info("Sin registros de horas para este equipo.")
 
     st.markdown("---")
-
-    # --- Gráficos: Desempeño Diario + Comparativa de Flota ---
-    g1, g2 = st.columns(2)
-
-    with g1:
-        st.subheader(f"Desempeño Diario: {nombre_seleccionado}")
-        if not df_h_filtrado_equipo.empty:
-            fig_linea = px.line(
-                df_h_filtrado_equipo.sort_values('FECHA'),
-                x='FECHA', y='HRS_OPERADAS', color='TURNO',
-                labels={'HRS_OPERADAS': 'Horas Trabajadas', 'FECHA': 'Día'},
-                markers=True, template="plotly_dark"
-            )
-            st.plotly_chart(fig_linea, use_container_width=True)
-        else:
-            st.info("Sin registros de horas para este equipo en el mes seleccionado.")
-
-    with g2:
-        st.subheader("Comparativa de Horas Totales: Toda la Flota")
-        if not df_h_filtrado_mes.empty:
-            df_resumen_flota = (df_h_filtrado_mes.groupby('ID_EQUIPO')['HRS_OPERADAS']
-                                .sum().reset_index())
-            df_resumen_flota = df_resumen_flota.merge(df_equipos, on='ID_EQUIPO', how='left')
-
-            df_resumen_flota['ES_SELECCIONADO'] = (
-                df_resumen_flota['ID_EQUIPO'] == id_equipo_sel
-            ).map({True: "⭐ SELECCIONADO", False: "Resto de flota"})
-
-            df_resumen_flota = df_resumen_flota.sort_values('HRS_OPERADAS', ascending=True)
-
-            fig_barra = px.bar(
-                df_resumen_flota,
-                x='HRS_OPERADAS', y='NOMBR',
-                orientation='h',
-                color='ES_SELECCIONADO',
-                color_discrete_map={
-                    "⭐ SELECCIONADO": "#F6AD55",
-                    "Resto de flota": "#5A6B7D"
-                },
-                labels={'HRS_OPERADAS': 'Horas Acumuladas', 'NOMBR': 'Equipo'},
-                text='HRS_OPERADAS',
-                template="plotly_dark"
-            )
-            fig_barra.update_traces(texttemplate='%{text:.1f} h', textposition='outside')
-            fig_barra.update_layout(showlegend=False,
-                                     xaxis_title="Horas Acumuladas",
-                                     yaxis_title="Equipo")
-            st.plotly_chart(fig_barra, use_container_width=True)
-        else:
-            st.info("No hay datos de flota para este período.")
 
 # ------------------------------------------
 # TAB 2: NEUMÁTICOS
