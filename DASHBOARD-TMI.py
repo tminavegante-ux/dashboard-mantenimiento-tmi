@@ -222,7 +222,7 @@ with tab_horometros:
         status_actual = (df_h_filtrado_equipo.sort_values('FECHA').iloc[-1]['STATUS_EQUIPO']
                          if not df_h_filtrado_equipo.empty else "SIN REGISTRO")
         st.metric("Último Estado Operativo", str(status_actual).upper())
-        with kpi4:                                          # 4 espacios
+    with kpi4:                                          # 4 espacios
         if not df_h_filtrado_equipo.empty:              # 8 espacios
             df_dias = (df_h_filtrado_equipo             # 12 espacios
                        .assign(DIA=df_h_filtrado_equipo['FECHA'].dt.date)
