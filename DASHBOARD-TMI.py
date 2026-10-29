@@ -26,14 +26,12 @@ def cargar_datos_marcio():
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
 
-        # Leer las 5 hojas
         df_equipos = conn.read(worksheet="EQUIPOS", ttl=0)
         df_horometro = conn.read(worksheet="HOROMETRO", ttl=0)
         df_componentes = conn.read(worksheet="COMPONENTES", ttl=0)
         df_neumaticos = conn.read(worksheet="NEUMATICOS", ttl=0)
         df_engrase = conn.read(worksheet="ENGRASE", ttl=0)
 
-        # --- Normalización de nombres de columnas ---
         def _norm_cols(df):
             df.columns = [str(c).strip().upper() for c in df.columns]
             return df
@@ -44,7 +42,6 @@ def cargar_datos_marcio():
         df_neumaticos = _norm_cols(df_neumaticos)
         df_engrase = _norm_cols(df_engrase)
 
-        # --- Mapeo de variantes ---
         MAPEO_COLUMNAS = {
             "NOMBRE": "NOMBR",
             "NOMBRE_EQUIPO": "NOMBR",
@@ -70,7 +67,6 @@ def cargar_datos_marcio():
         df_neumaticos = _rename_variants(df_neumaticos)
         df_engrase = _rename_variants(df_engrase)
 
-        # --- Validación de columnas requeridas ---
         requeridas = {
             "EQUIPOS": (df_equipos, ["ID_EQUIPO", "NOMBR"]),
             "HOROMETRO": (df_horometro, ["FECHA", "ID_EQUIPO", "H_INICIAL",
@@ -90,7 +86,6 @@ def cargar_datos_marcio():
                     f"Columnas encontradas: {list(df.columns)}"
                 )
 
-        # --- Normalización de ID_EQUIPO ---
         for df in (df_equipos, df_horometro, df_componentes,
                    df_neumaticos, df_engrase):
             if 'ID_EQUIPO' in df.columns:
@@ -103,7 +98,6 @@ def cargar_datos_marcio():
         if 'CARA' in df_neumaticos.columns:
             df_neumaticos['CARA'] = df_neumaticos['CARA'].astype(str).str.strip().str.upper()
 
-        # --- Fechas ---
         df_horometro['FECHA'] = pd.to_datetime(df_horometro['FECHA'], errors='coerce')
         df_componentes['FECHA_INSTALACION'] = pd.to_datetime(
             df_componentes['FECHA_INSTALACION'], errors='coerce')
@@ -111,7 +105,6 @@ def cargar_datos_marcio():
             df_neumaticos['FECHA_MEDICION'], errors='coerce')
         df_engrase['FECHA'] = pd.to_datetime(df_engrase['FECHA'], errors='coerce')
 
-        # --- Cálculos ---
         df_horometro['HRS_OPERADAS'] = df_horometro['HFINAL'] - df_horometro['H_INICIAL']
         df_horometro.loc[df_horometro['HFINAL'].isna(), 'HRS_OPERADAS'] = pd.NA
         df_horometro.loc[df_horometro['HRS_OPERADAS'] < 0, 'HRS_OPERADAS'] = pd.NA
@@ -277,6 +270,77 @@ with tab_horometros:
 
     st.markdown("---")
 
+    # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
+    st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
+
+    df_equipo_todos = df_horometro_equipo.copy()
+    df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
+
+    if not df_equipo_todos.empty:
+        df_mensual = (df_equipo_todos
+                      .groupby(['ANIO', 'MES_NUM'])['HRS_OPERADAS']
+                      .sum()
+                      .reset_index())
+
+        anio_ref = int(df_mensual['ANIO'].max())
+
+        todos_meses = pd.DataFrame({
+            'MES_NUM': list(range(1, 13)),
+            'ANIO': [anio_ref] * 12
+        })
+        todos_meses['MES_NOMBRE'] = todos_meses['MES_NUM'].map(dicc_meses)
+        todos_meses['PERIODO'] = todos_meses['MES_NOMBRE'] + " " + todos_meses['ANIO'].astype(str)
+
+        df_mensual_full = todos_meses.merge(
+            df_mensual[['ANIO', 'MES_NUM', 'HRS_OPERADAS']],
+            on=['ANIO', 'MES_NUM'],
+            how='left'
+        )
+        df_mensual_full['HRS_OPERADAS'] = df_mensual_full['HRS_OPERADAS'].fillna(0)
+
+        df_mensual_full['ES_MES_ACTUAL'] = (
+            (df_mensual_full['MES_NUM'] == mes_sel_num)
+        ).map({True: "⭐ Mes Actual", False: "Otros meses"})
+
+        fig_mensual = px.bar(
+            df_mensual_full,
+            x='PERIODO',
+            y='HRS_OPERADAS',
+            color='ES_MES_ACTUAL',
+            color_discrete_map={
+                "⭐ Mes Actual": "#F6AD55",
+                "Otros meses": "#5A6B7D"
+            },
+            labels={'HRS_OPERADAS': 'Horas Operadas', 'PERIODO': 'Mes'},
+            template="plotly_dark"
+        )
+
+        fig_mensual.update_traces(
+            width=0.5,
+            text=[f"{v:.0f} h" if v > 0 else "" for v in df_mensual_full['HRS_OPERADAS']],
+            textposition='outside'
+        )
+
+        fig_mensual.update_layout(
+            showlegend=False,
+            xaxis_title="Mes",
+            yaxis_title="Horas Operadas",
+            height=280,
+            margin=dict(l=40, r=20, t=30, b=60),
+            bargap=0.3
+        )
+
+        fig_mensual.update_xaxes(tickangle=-45)
+
+        st.plotly_chart(fig_mensual, use_container_width=True)
+    else:
+        st.info("Sin registros de horas para este equipo.")
+
+    st.markdown("---")
+
+    # --- Gráficos: Desempeño Diario + Comparativa de Flota ---
+    g1, g2 = st.columns(2)
+
     with g1:
         st.subheader(f"Desempeño Diario: {nombre_seleccionado}")
         if not df_h_filtrado_equipo.empty:
@@ -285,9 +349,7 @@ with tab_horometros:
                 x='FECHA', y='HRS_OPERADAS', color='TURNO',
                 labels={'HRS_OPERADAS': 'Horas Trabajadas', 'FECHA': 'Día'},
                 markers=True, template="plotly_dark"
-    st.markdown("---")
-
-   g1, g2 = st.columns(2)
+            )
             st.plotly_chart(fig_linea, use_container_width=True)
         else:
             st.info("Sin registros de horas para este equipo en el mes seleccionado.")
@@ -312,7 +374,7 @@ with tab_horometros:
                 color='ES_SELECCIONADO',
                 color_discrete_map={
                     "⭐ SELECCIONADO": "#F6AD55",
-                    "Resto de flota": "#4A5568"
+                    "Resto de flota": "#5A6B7D"
                 },
                 labels={'HRS_OPERADAS': 'Horas Acumuladas', 'NOMBR': 'Equipo'},
                 text='HRS_OPERADAS',
