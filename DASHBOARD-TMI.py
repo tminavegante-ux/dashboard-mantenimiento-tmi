@@ -239,8 +239,8 @@ with tab_horometros:
                     <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
                         Días Operativos / Inoperativos
                     </div>
-                    <div style="display:flex;gap:24px;align-items:center;">
-                        <div style="text-align:center;min-width:60px;">
+                    <div style="display:flex;gap:16px;align-items:baseline;">
+                        <div style="text-align:center;min-width:50px;">
                             <div style="font-size:32px;font-weight:600;color:#48BB78;line-height:1;">
                                 {dias_operativos}
                             </div>
@@ -249,7 +249,7 @@ with tab_horometros:
                             </div>
                         </div>
                         <div style="font-size:20px;color:#666;">/</div>
-                        <div style="text-align:center;min-width:60px;">
+                        <div style="text-align:center;min-width:50px;">
                             <div style="font-size:32px;font-weight:600;color:#F56565;line-height:1;">
                                 {dias_inoperativos}
                             </div>
@@ -257,14 +257,9 @@ with tab_horometros:
                                 INOPERATIVOS
                             </div>
                         </div>
-                        <div style="text-align:center;min-width:80px;border-left:1px solid #333;padding-left:16px;">
-                            <div style="font-size:28px;font-weight:600;color:#fafafa;line-height:1;">
-                                {total_dias}
-                            </div>
-                            <div style="font-size:11px;color:#aaa;margin-top:2px;">
-                                TOTAL DÍAS
-                            </div>
-                        </div>
+                    </div>
+                    <div style="font-size:12px;color:#888;margin-top:8px;">
+                        Total: {total_dias} días
                     </div>
                 </div>
                 """,
@@ -278,6 +273,7 @@ with tab_horometros:
                         Días Operativos / Inoperativos
                     </div>
                     <div style="font-size:32px;font-weight:600;color:#666;">0 / 0</div>
+                    <div style="font-size:12px;color:#888;margin-top:8px;">Total: 0 días</div>
                 </div>
                 """,
                 unsafe_allow_html=True
