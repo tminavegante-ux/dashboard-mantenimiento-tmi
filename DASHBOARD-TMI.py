@@ -224,25 +224,21 @@ with tab_horometros:
         st.metric("Último Estado Operativo", str(status_actual).upper())
     with kpi4:
         if not df_h_filtrado_equipo.empty:
-            df_dias = (df_h_filtrado_equipo
-                       .assign(DIA=df_h_filtrado_equipo['FECHA'].dt.date)
-                       .groupby('DIA')['STATUS_EQUIPO']
-                       .agg(lambda s: 'OPERATIVO' if (s == 'OPERATIVO').any() else 'INOPERATIVO')
-                       .reset_index())
-            dias_operativos = (df_dias['STATUS_EQUIPO'] == 'OPERATIVO').sum()
-            dias_inoperativos = (df_dias['STATUS_EQUIPO'] == 'INOPERATIVO').sum()
-            total_dias = dias_operativos + dias_inoperativos
+            turnos_operativos = (df_h_filtrado_equipo['STATUS_EQUIPO'] == 'OPERATIVO').sum()
+            turnos_inoperativos = (df_h_filtrado_equipo['STATUS_EQUIPO'] != 'OPERATIVO').sum()
+            total_turnos = turnos_operativos + turnos_inoperativos
+            disponibilidad = (turnos_operativos / total_turnos * 100) if total_turnos > 0 else 0
 
             st.markdown(
                 f"""
                 <div style="padding:0;">
                     <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
-                        Días Operativos / Inoperativos
+                        Turnos Operativos / Inoperativos
                     </div>
                     <div style="display:flex;gap:16px;align-items:baseline;">
                         <div style="text-align:center;min-width:50px;">
                             <div style="font-size:32px;font-weight:600;color:#48BB78;line-height:1;">
-                                {dias_operativos}
+                                {turnos_operativos}
                             </div>
                             <div style="font-size:11px;color:#48BB78;margin-top:2px;">
                                 OPERATIVOS
@@ -251,7 +247,7 @@ with tab_horometros:
                         <div style="font-size:20px;color:#666;">/</div>
                         <div style="text-align:center;min-width:50px;">
                             <div style="font-size:32px;font-weight:600;color:#F56565;line-height:1;">
-                                {dias_inoperativos}
+                                {turnos_inoperativos}
                             </div>
                             <div style="font-size:11px;color:#F56565;margin-top:2px;">
                                 INOPERATIVOS
@@ -259,7 +255,7 @@ with tab_horometros:
                         </div>
                     </div>
                     <div style="font-size:12px;color:#888;margin-top:8px;">
-                        Total: {total_dias} días
+                        Total: {total_turnos} turnos · Disp: {disponibilidad:.1f}%
                     </div>
                 </div>
                 """,
@@ -270,10 +266,10 @@ with tab_horometros:
                 """
                 <div style="padding:0;">
                     <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
-                        Días Operativos / Inoperativos
+                        Turnos Operativos / Inoperativos
                     </div>
                     <div style="font-size:32px;font-weight:600;color:#666;">0 / 0</div>
-                    <div style="font-size:12px;color:#888;margin-top:8px;">Total: 0 días</div>
+                    <div style="font-size:12px;color:#888;margin-top:8px;">Sin datos</div>
                 </div>
                 """,
                 unsafe_allow_html=True
