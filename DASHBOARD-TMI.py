@@ -271,53 +271,56 @@ with tab_horometros:
     st.markdown("---")
 
     # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
-    st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
+       st.subheader(f"📊 Rendimiento Mensual - {nombre_seleccionado}")
 
     df_equipo_todos = df_horometro_equipo.copy()
     df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
 
     if not df_equipo_todos.empty:
+        # Agrupar por año y mes (solo meses con datos)
         df_mensual = (df_equipo_todos
                       .groupby(['ANIO', 'MES_NUM'])['HRS_OPERADAS']
                       .sum()
                       .reset_index())
 
-        anio_ref = int(df_mensual['ANIO'].max())
+        # Orden cronológico
+        df_mensual = df_mensual.sort_values(['ANIO', 'MES_NUM']).reset_index(drop=True)
 
-        todos_meses = pd.DataFrame({
-            'MES_NUM': list(range(1, 13)),
-            'ANIO': [anio_ref] * 12
-        })
-        todos_meses['MES_NOMBRE'] = todos_meses['MES_NUM'].map(dicc_meses)
-        todos_meses['PERIODO'] = todos_meses['MES_NOMBRE'] + " " + todos_meses['ANIO'].astype(str)
+        # Etiqueta corta: Set, Oct, Nov, Dic, Ene, Feb...
+        ABREV_MES = {
+            1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
+            5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
+            9: "Set", 10: "Oct", 11: "Nov", 12: "Dic"
+        }
+        df_mensual['ETIQUETA'] = df_mensual['MES_NUM'].map(ABREV_MES)
 
-        df_mensual_full = todos_meses.merge(
-            df_mensual[['ANIO', 'MES_NUM', 'HRS_OPERADAS']],
-            on=['ANIO', 'MES_NUM'],
-            how='left'
-        )
-        df_mensual_full['HRS_OPERADAS'] = df_mensual_full['HRS_OPERADAS'].fillna(0)
+        # Si hay más de un año, agregar el año a la etiqueta para distinguir
+        if df_mensual['ANIO'].nunique() > 1:
+            df_mensual['ETIQUETA'] = (df_mensual['ETIQUETA'] + " " +
+                                       df_mensual['ANIO'].astype(str))
 
-        df_mensual_full['ES_MES_ACTUAL'] = (
-            (df_mensual_full['MES_NUM'] == mes_sel_num)
+        # Marcar el mes seleccionado
+        df_mensual['ES_MES_ACTUAL'] = (
+            (df_mensual['MES_NUM'] == mes_sel_num)
         ).map({True: "⭐ Mes Actual", False: "Otros meses"})
 
         fig_mensual = px.bar(
-            df_mensual_full,
-            x='PERIODO',
+            df_mensual,
+            x='ETIQUETA',
             y='HRS_OPERADAS',
             color='ES_MES_ACTUAL',
             color_discrete_map={
                 "⭐ Mes Actual": "#F6AD55",
                 "Otros meses": "#5A6B7D"
             },
-            labels={'HRS_OPERADAS': 'Horas Operadas', 'PERIODO': 'Mes'},
+            text='HRS_OPERADAS',
+            labels={'HRS_OPERADAS': 'Horas Operadas', 'ETIQUETA': 'Mes'},
             template="plotly_dark"
         )
 
         fig_mensual.update_traces(
             width=0.5,
-            text=[f"{v:.0f} h" if v > 0 else "" for v in df_mensual_full['HRS_OPERADAS']],
+            texttemplate='%{text:.0f} h',
             textposition='outside'
         )
 
@@ -326,11 +329,9 @@ with tab_horometros:
             xaxis_title="Mes",
             yaxis_title="Horas Operadas",
             height=280,
-            margin=dict(l=40, r=20, t=30, b=60),
-            bargap=0.3
+            margin=dict(l=40, r=20, t=30, b=40),
+            bargap=0.4
         )
-
-        fig_mensual.update_xaxes(tickangle=-45)
 
         st.plotly_chart(fig_mensual, use_container_width=True)
     else:
