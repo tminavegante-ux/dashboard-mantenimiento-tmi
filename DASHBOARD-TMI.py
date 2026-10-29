@@ -226,7 +226,7 @@ with tab_horometros:
                 f"""
                 <div style="padding:0;">
                     <div style="font-size:14px;color:#fafafa;margin-bottom:8px;">
-                        Turnos Operativos / Inoperativos
+                        TURNOS: Operativos / Inoperativos
                     </div>
                     <div style="display:flex;gap:16px;align-items:baseline;">
                         <div style="text-align:center;min-width:50px;">
