@@ -276,52 +276,56 @@ with tab_horometros:
     df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
 
     if not df_equipo_todos.empty:
-        # Agrupar por año y mes (solo meses con datos)
         df_mensual = (df_equipo_todos
                       .groupby(['ANIO', 'MES_NUM'])['HRS_OPERADAS']
                       .sum()
                       .reset_index())
 
-        # Orden cronológico
-        df_mensual = df_mensual.sort_values(['ANIO', 'MES_NUM']).reset_index(drop=True)
+        # Año de referencia (el más reciente con datos)
+        anio_ref = int(df_mensual['ANIO'].max())
+        df_anio = df_mensual[df_mensual['ANIO'] == anio_ref].copy()
 
-        # Etiqueta corta: Set, Oct, Nov, Dic, Ene, Feb...
+        # Diccionario de abreviaturas
         ABREV_MES = {
             1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
             5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
             9: "Set", 10: "Oct", 11: "Nov", 12: "Dic"
         }
-        df_mensual['ETIQUETA'] = df_mensual['MES_NUM'].map(ABREV_MES)
 
-        # Si hay más de un año, agregar el año a la etiqueta para distinguir
-        if df_mensual['ANIO'].nunique() > 1:
-            df_mensual['ETIQUETA'] = (df_mensual['ETIQUETA'] + " " +
-                                       df_mensual['ANIO'].astype(str))
+        # Eje X fijo: los 12 meses del año de referencia
+        meses_eje = list(range(1, 13))
+        etiquetas_eje = [ABREV_MES[m] for m in meses_eje]
 
-        # Marcar el mes seleccionado
-        df_mensual['ES_MES_ACTUAL'] = (
-            (df_mensual['MES_NUM'] == mes_sel_num)
-        ).map({True: "⭐ Mes Actual", False: "Otros meses"})
+        # Mapear datos: para cada mes, la hora o 0 si no hay
+        horas_por_mes = {m: 0 for m in meses_eje}
+        for _, r in df_anio.iterrows():
+            horas_por_mes[int(r['MES_NUM'])] = float(r['HRS_OPERADAS'])
 
-        fig_mensual = px.bar(
-            df_mensual,
-            x='ETIQUETA',
-            y='HRS_OPERADAS',
-            color='ES_MES_ACTUAL',
-            color_discrete_map={
-                "⭐ Mes Actual": "#F6AD55",
-                "Otros meses": "#5A6B7D"
-            },
-            text='HRS_OPERADAS',
-            labels={'HRS_OPERADAS': 'Horas Operadas', 'ETIQUETA': 'Mes'},
-            template="plotly_dark"
-        )
+        # Colores: ámbar si es el mes seleccionado, gris azulado si tiene datos,
+        # transparente si no tiene datos (no se ve)
+        colores = []
+        etiquetas_texto = []
+        for m in meses_eje:
+            if m == mes_sel_num and horas_por_mes[m] > 0:
+                colores.append("#F6AD55")
+                etiquetas_texto.append(f"{horas_por_mes[m]:.0f} h")
+            elif horas_por_mes[m] > 0:
+                colores.append("#5A6B7D")
+                etiquetas_texto.append(f"{horas_por_mes[m]:.0f} h")
+            else:
+                colores.append("rgba(0,0,0,0)")  # invisible
+                etiquetas_texto.append("")
 
-        fig_mensual.update_traces(
+        fig_mensual = go.Figure()
+        fig_mensual.add_trace(go.Bar(
+            x=etiquetas_eje,
+            y=[horas_por_mes[m] for m in meses_eje],
+            marker_color=colores,
+            text=etiquetas_texto,
+            textposition='outside',
             width=0.5,
-            texttemplate='%{text:.0f} h',
-            textposition='outside'
-        )
+            hovertemplate="<b>%{x}</b><br>Horas: %{y:.0f}<extra></extra>"
+        ))
 
         fig_mensual.update_layout(
             showlegend=False,
@@ -329,7 +333,11 @@ with tab_horometros:
             yaxis_title="Horas Operadas",
             height=280,
             margin=dict(l=40, r=20, t=30, b=40),
-            bargap=0.4
+            bargap=0.4,
+            xaxis=dict(
+                categoryorder='array',
+                categoryarray=etiquetas_eje
+            )
         )
 
         st.plotly_chart(fig_mensual, use_container_width=True)
