@@ -277,8 +277,6 @@ with tab_horometros:
 
     st.markdown("---")
 
-)
-
     with g1:
         st.subheader(f"Desempeño Diario: {nombre_seleccionado}")
         if not df_h_filtrado_equipo.empty:
