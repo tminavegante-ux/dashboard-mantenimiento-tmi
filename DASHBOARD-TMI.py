@@ -222,70 +222,69 @@ with tab_horometros:
         status_actual = (df_h_filtrado_equipo.sort_values('FECHA').iloc[-1]['STATUS_EQUIPO']
                          if not df_h_filtrado_equipo.empty else "SIN REGISTRO")
         st.metric("Último Estado Operativo", str(status_actual).upper())
-    with kpi4:
-        if not df_h_filtrado_equipo.empty:
-        df_dias = (df_h_filtrado_equipo
-                   .assign(DIA=df_h_filtrado_equipo['FECHA'].dt.date)
-                   .groupby('DIA')['STATUS_EQUIPO']
-                   .agg(lambda s: 'OPERATIVO' if (s == 'OPERATIVO').any() else 'INOPERATIVO')
-                   .reset_index())
-        dias_operativos = (df_dias['STATUS_EQUIPO'] == 'OPERATIVO').sum()
-        dias_inoperativos = (df_dias['STATUS_EQUIPO'] == 'INOPERATIVO').sum()
-        total_dias = dias_operativos + dias_inoperativos
-        
-        st.markdown(
-            f"""
-            <div style="
-                background-color:#1a1a2e;
-                border:1px solid #333;
-                border-radius:8px;
-                padding:12px;
-                text-align:center;
-                height:100%;
-            ">
-                <div style="font-size:13px;color:#aaa;margin-bottom:8px;">
-                    Días Operativos / Inoperativos
-                </div>
-                <div style="display:flex;justify-content:center;gap:20px;align-items:baseline;">
-                    <div>
-                        <span style="font-size:28px;font-weight:bold;color:#48BB78;">
-                            {dias_operativos}
-                        </span>
-                        <div style="font-size:11px;color:#48BB78;">OPERATIVOS</div>
+        with kpi4:                                          # 4 espacios
+        if not df_h_filtrado_equipo.empty:              # 8 espacios
+            df_dias = (df_h_filtrado_equipo             # 12 espacios
+                       .assign(DIA=df_h_filtrado_equipo['FECHA'].dt.date)
+                       .groupby('DIA')['STATUS_EQUIPO']
+                       .agg(lambda s: 'OPERATIVO' if (s == 'OPERATIVO').any() else 'INOPERATIVO')
+                       .reset_index())
+            dias_operativos = (df_dias['STATUS_EQUIPO'] == 'OPERATIVO').sum()
+            dias_inoperativos = (df_dias['STATUS_EQUIPO'] == 'INOPERATIVO').sum()
+            total_dias = dias_operativos + dias_inoperativos
+
+            st.markdown(                                # 12 espacios
+                f"""
+                <div style="
+                    background-color:#1a1a2e;
+                    border:1px solid #333;
+                    border-radius:8px;
+                    padding:12px;
+                    text-align:center;
+                ">
+                    <div style="font-size:13px;color:#aaa;margin-bottom:8px;">
+                        Días Operativos / Inoperativos
                     </div>
-                    <div style="font-size:20px;color:#666;">/</div>
-                    <div>
-                        <span style="font-size:28px;font-weight:bold;color:#F56565;">
-                            {dias_inoperativos}
-                        </span>
-                        <div style="font-size:11px;color:#F56565;">INOPERATIVOS</div>
+                    <div style="display:flex;justify-content:center;gap:20px;align-items:baseline;">
+                        <div>
+                            <span style="font-size:28px;font-weight:bold;color:#48BB78;">
+                                {dias_operativos}
+                            </span>
+                            <div style="font-size:11px;color:#48BB78;">OPERATIVOS</div>
+                        </div>
+                        <div style="font-size:20px;color:#666;">/</div>
+                        <div>
+                            <span style="font-size:28px;font-weight:bold;color:#F56565;">
+                                {dias_inoperativos}
+                            </span>
+                            <div style="font-size:11px;color:#F56565;">INOPERATIVOS</div>
+                        </div>
+                    </div>
+                    <div style="font-size:11px;color:#888;margin-top:6px;">
+                        Total: {total_dias} días
                     </div>
                 </div>
-                <div style="font-size:11px;color:#888;margin-top:6px;">
-                    Total: {total_dias} días
+                """,
+                unsafe_allow_html=True
+            )
+        else:                                           # 8 espacios
+            st.markdown(                                # 12 espacios
+                """
+                <div style="
+                    background-color:#1a1a2e;
+                    border:1px solid #333;
+                    border-radius:8px;
+                    padding:12px;
+                    text-align:center;
+                ">
+                    <div style="font-size:13px;color:#aaa;margin-bottom:8px;">
+                        Días Operativos / Inoperativos
+                    </div>
+                    <div style="font-size:24px;color:#666;">0 / 0</div>
                 </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown(
-            """
-            <div style="
-                background-color:#1a1a2e;
-                border:1px solid #333;
-                border-radius:8px;
-                padding:12px;
-                text-align:center;
-            ">
-                <div style="font-size:13px;color:#aaa;margin-bottom:8px;">
-                    Días Operativos / Inoperativos
-                </div>
-                <div style="font-size:24px;color:#666;">0 / 0</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+                """,
+                unsafe_allow_html=True
+            )
 
     st.markdown("---")
     g1, g2 = st.columns(2)
