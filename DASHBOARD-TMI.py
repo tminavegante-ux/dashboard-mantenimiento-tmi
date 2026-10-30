@@ -399,6 +399,7 @@ with tab_horometros:
 # TAB 2: NEUMÁTICOS
 # ------------------------------------------
 with tab_neumaticos:
+with tab_neumaticos:
     st.header(f"Control de Neumáticos - {nombre_seleccionado}")
 
     COCADA_CRITICA = 25
@@ -410,6 +411,7 @@ with tab_neumaticos:
         "🟢 OK": ("#48BB78", "#2F855A"),
         "🟡 ATENCIÓN": ("#F6AD55", "#C05621"),
         "🔴 CRÍTICO": ("#F56565", "#C53030"),
+        "⚪ SIN DATO": ("#888888", "#555555"),
     }
 
     def _svg_llanta(pos_label, fila_opt, horometro):
@@ -427,22 +429,29 @@ with tab_neumaticos:
                 'SIN DATOS</text></svg></div>'
             )
 
-        ext = fila_opt['EXTERIOR']
-        int_ = fila_opt['INTERIOR']
+        ext = fila_opt.get('EXTERIOR', pd.NA)
+        int_ = fila_opt.get('INTERIOR', pd.NA)
         estado = fila_opt['ESTADO']
         rotacion = fila_opt['ROTACION']
         delta = fila_opt['DELTA']
         color, color_dark = COLOR_ESTADO_HEX.get(estado, ("#888888", "#555555"))
 
         h_max_px = 55
-        h_ext = max(4, min(h_max_px, (ext / COCADA_NUEVA_MAX) * h_max_px))
-        h_int = max(4, min(h_max_px, (int_ / COCADA_NUEVA_MAX) * h_max_px))
+        ext_val = 0 if pd.isna(ext) else float(ext)
+        int_val = 0 if pd.isna(int_) else float(int_)
+        h_ext = max(4, min(h_max_px, (ext_val / COCADA_NUEVA_MAX) * h_max_px)) if ext_val > 0 else 0
+        h_int = max(4, min(h_max_px, (int_val / COCADA_NUEVA_MAX) * h_max_px)) if int_val > 0 else 0
         base_y = 75
         y_ext = base_y - h_ext
         y_int = base_y - h_int
-        dash = 'stroke-dasharray="5,3"' if rotacion == "🔄 ROTAR" else ""
-        borde_rot = "#F6E05E" if rotacion == "🔄 ROTAR" else "transparent"
+        dash = 'stroke-dasharray="5,3"' if rotacion.startswith("🔄") else ""
+        borde_rot = "#F6E05E" if rotacion.startswith("🔄") else "transparent"
         hor_txt = f"{horometro:,.0f} h" if pd.notna(horometro) else "—"
+
+        # Etiquetas: mostrar "—" si no hay dato
+        ext_txt = f"{ext:.1f}" if pd.notna(ext) else "—"
+        int_txt = f"{int_:.1f}" if pd.notna(int_) else "—"
+        delta_txt = f"{delta:+.1f}" if pd.notna(delta) else "—"
 
         return (
             '<div style="display:flex;flex-direction:column;align-items:center;'
@@ -463,12 +472,12 @@ with tab_neumaticos:
             '<text x="42" y="86" text-anchor="middle" font-size="9" fill="#aaaaaa">INT</text>'
             '<text x="97" y="86" text-anchor="middle" font-size="9" fill="#aaaaaa">EXT</text>'
             f'<text x="42" y="{max(12, y_int - 3):.2f}" text-anchor="middle" '
-            f'font-size="10" fill="#ffffff" font-weight="bold">{int_:.1f}</text>'
+            f'font-size="10" fill="#ffffff" font-weight="bold">{int_txt}</text>'
             f'<text x="97" y="{max(12, y_ext - 3):.2f}" text-anchor="middle" '
-            f'font-size="10" fill="#ffffff" font-weight="bold">{ext:.1f}</text>'
+            f'font-size="10" fill="#ffffff" font-weight="bold">{ext_txt}</text>'
             '</svg>'
             f'<div style="font-size:11px;color:{color};font-weight:bold;'
-            f'margin-top:4px;">{estado} · Δ {delta:+.1f} mm</div>'
+            f'margin-top:4px;">{estado} · Δ {delta_txt} mm</div>'
             f'<div style="font-size:10px;color:#888888;margin-top:2px;">'
             f'{rotacion} · {hor_txt}</div>'
             '</div>'
@@ -481,6 +490,10 @@ with tab_neumaticos:
     if df_n_equipo.empty:
         st.info("No se registran inspecciones de neumáticos para este equipo.")
     else:
+        # Forzar COCADA numérico
+        df_n_equipo = df_n_equipo.copy()
+        df_n_equipo['COCADA'] = pd.to_numeric(df_n_equipo['COCADA'], errors='coerce')
+
         ultima = (df_n_equipo.sort_values('FECHA_MEDICION')
                   .groupby(['POSICION', 'CARA'], as_index=False)
                   .tail(1))
@@ -488,52 +501,76 @@ with tab_neumaticos:
         horometro_por_pos = (ultima.groupby('POSICION')['HOROMETRO_MAQUINA']
                              .max().to_dict())
 
-        pivot = ultima.pivot(index='POSICION', columns='CARA', values='COCADA')
-        pivot = pivot.reindex(columns=['EXTERIOR', 'INTERIOR'])
+        pivot = ultima.pivot_table(index='POSICION', columns='CARA',
+                                    values='COCADA', aggfunc='last')
+        # Asegurar ambas columnas existan aunque estén vacías
+        for c in ['EXTERIOR', 'INTERIOR']:
+            if c not in pivot.columns:
+                pivot[c] = pd.NA
+        pivot = pivot[['EXTERIOR', 'INTERIOR']]
+
+        # DELTA solo cuando AMBAS caras existen
         pivot['DELTA'] = (pivot['EXTERIOR'] - pivot['INTERIOR']).round(1)
-        pivot['COCADA_MIN'] = pivot[['EXTERIOR', 'INTERIOR']].min(axis=1)
+
+        # Mínimo ignorando NaN (solo la cara medida)
+        pivot['COCADA_MIN'] = pivot[['EXTERIOR', 'INTERIOR']].min(axis=1, skipna=True)
+        # Máximo ignorando NaN
+        pivot['COCADA_MAX'] = pivot[['EXTERIOR', 'INTERIOR']].max(axis=1, skipna=True)
 
         def _estado_cocada(mm):
+            if pd.isna(mm):
+                return "⚪ SIN DATO"
             if mm < COCADA_CRITICA:
                 return "🔴 CRÍTICO"
             elif mm < COCADA_MINIMA:
                 return "🟡 ATENCIÓN"
             else:
                 return "🟢 OK"
+
         def _estado_rotacion(delta, cocada_min, cocada_max):
             motivos = []
-            if abs(delta) > DELTA_ROTACION:
+            # Solo evaluar delta si AMBAS caras existen
+            if pd.notna(delta) and abs(delta) > DELTA_ROTACION:
                 motivos.append("desgaste desigual")
-            if cocada_max <= COCADA_MINIMA:
+            if pd.notna(cocada_max) and cocada_max <= COCADA_MINIMA:
                 motivos.append("cocada baja")
             if motivos:
-              return "🔄 ROTAR · " + " + ".join(motivos)
+                return "🔄 ROTAR · " + " + ".join(motivos)
             return "✅ UNIFORME"
 
         pivot['ESTADO'] = pivot['COCADA_MIN'].apply(_estado_cocada)
         pivot['ROTACION'] = pivot.apply(
-            lambda r: _estado_rotacion(r['DELTA'], r['COCADA_MIN'], 
-                                        max(r['EXTERIOR'], r['INTERIOR'])), axis=1
+            lambda r: _estado_rotacion(r['DELTA'], r['COCADA_MIN'], r['COCADA_MAX']),
+            axis=1
         )
         pivot = pivot.reset_index()
 
-        cocada_min_global = pivot['COCADA_MIN'].min()
-        cocada_promedio = pivot[['EXTERIOR', 'INTERIOR']].values.mean()
-        delta_max = pivot['DELTA'].abs().max()
-        n_alertas = ((pivot['ESTADO'] != "🟢 OK") | (pivot['ROTACION'] == "🔄 ROTAR")).sum()
+        # KPIs: ignorando NaN
+        valores_validos = pivot[['EXTERIOR', 'INTERIOR']].values.flatten()
+        valores_validos = valores_validos[~pd.isna(valores_validos)]
+        cocada_min_global = valores_validos.min() if len(valores_validos) else 0
+        cocada_promedio = valores_validos.mean() if len(valores_validos) else 0
+        deltas_validos = pivot['DELTA'].dropna()
+        delta_max = deltas_validos.abs().max() if len(deltas_validos) else 0
+        n_alertas = ((pivot['ESTADO'].isin(["🔴 CRÍTICO", "🟡 ATENCIÓN"])) |
+                     (pivot['ROTACION'].str.startswith("🔄"))).sum()
 
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("Cocada Mínima", f"{cocada_min_global:.1f} mm",
                   delta=f"{cocada_min_global - COCADA_MINIMA:+.1f} vs mín.",
                   delta_color="inverse" if cocada_min_global < COCADA_MINIMA else "normal")
         k2.metric("Cocada Promedio", f"{cocada_promedio:.1f} mm")
-        k3.metric("Delta Máx. EXT/INT", f"{delta_max:.1f} mm",
-                  delta="Requiere rotación" if delta_max > DELTA_ROTACION else "Uniforme",
-                  delta_color="inverse" if delta_max > DELTA_ROTACION else "normal")
+        if delta_max > 0:
+            k3.metric("Delta Máx. EXT/INT", f"{delta_max:.1f} mm",
+                      delta="Requiere rotación" if delta_max > DELTA_ROTACION else "Uniforme",
+                      delta_color="inverse" if delta_max > DELTA_ROTACION else "normal")
+        else:
+            k3.metric("Delta Máx. EXT/INT", "—",
+                      delta="Sin ambas caras", delta_color="off")
         k4.metric("Neumáticos en Alerta", f"{n_alertas} / {len(pivot)}")
 
         st.markdown("---")
-        st.subheader(" Mapa de Neumáticos")
+        st.subheader("Mapa de Neumáticos")
 
         def _fila_pivote(pos_key):
             fila = pivot[pivot['POSICION'] == pos_key]
@@ -572,25 +609,27 @@ with tab_neumaticos:
                         unsafe_allow_html=True)
 
         st.caption(
-            f"🎨 **Leyenda:** ... "
+            f"🎨 **Leyenda:** "
             f"🟢 ≥{COCADA_MINIMA} · 🟡 {COCADA_CRITICA}-{COCADA_MINIMA} · "
             f"🔴 <{COCADA_CRITICA} · 🟨 borde amarillo = requiere rotación."
         )
 
         st.markdown("---")
 
-        rotaciones = pivot[pivot['ROTACION'] == "🔄 ROTAR"]
+        rotaciones = pivot[pivot['ROTACION'].str.startswith("🔄")]
         if not rotaciones.empty:
             st.subheader("🔄 Recomendaciones de Rotación")
             st.warning(
-                f"Se detectaron **{len(rotaciones)}** neumático(s) con desgaste desigual "
-                f"(delta > {DELTA_ROTACION} mm entre caras). Se recomienda voltear la rueda "
-                f"(intercambiar EXT ↔ INT) para uniformizar el desgaste."
+                f"Se detectaron **{len(rotaciones)}** neumático(s) que requieren atención "
+                f"(delta > {DELTA_ROTACION} mm entre caras o cocada baja)."
             )
             for _, r in rotaciones.iterrows():
+                ext_v = f"{r['EXTERIOR']:.1f}" if pd.notna(r['EXTERIOR']) else "—"
+                int_v = f"{r['INTERIOR']:.1f}" if pd.notna(r['INTERIOR']) else "—"
+                delta_v = f"{r['DELTA']:+.1f}" if pd.notna(r['DELTA']) else "—"
                 st.markdown(
-                    f"- **{r['POSICION']}** → EXT: {r['EXTERIOR']:.1f} mm | "
-                    f"INT: {r['INTERIOR']:.1f} mm | Delta: **{r['DELTA']:+.1f} mm**"
+                    f"- **{r['POSICION']}** → EXT: {ext_v} mm | "
+                    f"INT: {int_v} mm | Delta: **{delta_v} mm** · {r['ROTACION']}"
                 )
 
         st.markdown("---")
@@ -603,7 +642,8 @@ with tab_neumaticos:
         }
         for pos in ["DEL_IZQ", "DEL_DER", "POST_IZQ", "POST_DER"]:
             for cara in ["EXTERIOR", "INTERIOR"]:
-                sub = df_trend[(df_trend['POSICION'] == pos) & (df_trend['CARA'] == cara)]
+                sub = df_trend[(df_trend['POSICION'] == pos) &
+                               (df_trend['CARA'] == cara)].dropna(subset=['COCADA'])
                 if sub.empty:
                     continue
                 fig_trend.add_trace(go.Scatter(
@@ -613,7 +653,8 @@ with tab_neumaticos:
                     line=dict(color=colores.get(pos, "#888888"),
                               dash='solid' if cara == "EXTERIOR" else 'dash',
                               width=2),
-                    marker=dict(size=5)
+                    marker=dict(size=5),
+                    connectgaps=False
                 ))
 
         fig_trend.update_layout(
@@ -630,6 +671,7 @@ with tab_neumaticos:
         st.plotly_chart(fig_trend, use_container_width=True)
         st.caption("Líneas sólidas = Cara EXTERIOR · Líneas punteadas = Cara INTERIOR. "
                    "Si las líneas se cruzan, indica que el neumático fue rotado/volteado.")
+    
 
 # ------------------------------------------
 # TAB 3: COMPONENTES
