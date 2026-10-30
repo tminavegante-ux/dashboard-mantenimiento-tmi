@@ -399,7 +399,6 @@ with tab_horometros:
 # TAB 2: NEUMÁTICOS
 # ------------------------------------------
 with tab_neumaticos:
-with tab_neumaticos:
     st.header(f"Control de Neumáticos - {nombre_seleccionado}")
 
     COCADA_CRITICA = 25
