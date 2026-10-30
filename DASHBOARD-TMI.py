@@ -401,10 +401,10 @@ with tab_horometros:
 with tab_neumaticos:
     st.header(f"Control de Neumáticos - {nombre_seleccionado}")
 
-    COCADA_CRITICA = 8
-    COCADA_MINIMA = 12
-    DELTA_ROTACION = 5
-    COCADA_NUEVA_MAX = 80.0
+    COCADA_CRITICA = 25
+    COCADA_MINIMA = 50
+    DELTA_ROTACION = 8
+    COCADA_NUEVA_MAX = 100.0
 
     COLOR_ESTADO_HEX = {
         "🟢 OK": ("#48BB78", "#2F855A"),
