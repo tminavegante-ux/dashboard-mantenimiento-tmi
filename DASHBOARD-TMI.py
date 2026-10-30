@@ -572,10 +572,9 @@ with tab_neumaticos:
                         unsafe_allow_html=True)
 
         st.caption(
-            " **Leyenda:** Cada llanta muestra dos bandas de cocada — "
-            "**INT** (lado hacia el chasis) y **EXT** (lado hacia afuera). "
-            f"La altura es proporcional a los mm restantes (máx. {COCADA_NUEVA_MAX:.0f} mm). "
-            "🟢 ≥12mm · 🟡 8-12mm · 🔴 <8mm · 🟨 borde amarillo = requiere rotación."
+            f"🎨 **Leyenda:** ... "
+            f"🟢 ≥{COCADA_MINIMA} · 🟡 {COCADA_CRITICA}-{COCADA_MINIMA} · "
+            f"🔴 <{COCADA_CRITICA} · 🟨 borde amarillo = requiere rotación."
         )
 
         st.markdown("---")
