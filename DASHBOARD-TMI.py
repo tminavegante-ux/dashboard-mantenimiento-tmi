@@ -17,7 +17,7 @@ st.set_page_config(
 st.sidebar.image("tmi2026.png", width=160)
 st.title("CONTROL NEW MING 2026")
 st.markdown("---")
-
+ 
 # ==========================================
 # 2. CARGA DE DATOS DESDE GOOGLE SHEETS
 # ==========================================
