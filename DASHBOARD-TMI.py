@@ -500,7 +500,7 @@ with tab_neumaticos:
                 return "🟡 ATENCIÓN"
             else:
                 return "🟢 OK"
-         def _estado_rotacion(delta, cocada_min, cocada_max):
+        def _estado_rotacion(delta, cocada_min, cocada_max):
             motivos = []
             if abs(delta) > DELTA_ROTACION:
                 motivos.append("desgaste desigual")
