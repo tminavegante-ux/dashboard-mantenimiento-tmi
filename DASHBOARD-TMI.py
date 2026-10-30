@@ -773,7 +773,7 @@ with tab_engrase:
             anio_ref = df_e_mes['ANIO'].mode().iloc[0] if not df_e_mes.empty else pd.Timestamp.now().year
             cal = calendar.Calendar(firstweekday=0)
             dias_mes = cal.monthdayscalendar(anio_ref, mes_sel_num)
-
+            
             resumen_dias = {}
             for _, r in df_e_mes.iterrows():
                 dia = r['FECHA'].day
