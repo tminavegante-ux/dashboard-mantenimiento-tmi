@@ -500,14 +500,21 @@ with tab_neumaticos:
                 return "🟡 ATENCIÓN"
             else:
                 return "🟢 OK"
-
-        def _estado_delta(delta):
+         def _estado_rotacion(delta, cocada_min, cocada_max):
+            motivos = []
             if abs(delta) > DELTA_ROTACION:
-                return "🔄 ROTAR"
+                motivos.append("desgaste desigual")
+            if cocada_max <= COCADA_MINIMA:
+                motivos.append("cocada baja")
+            if motivos:
+              return "🔄 ROTAR · " + " + ".join(motivos)
             return "✅ UNIFORME"
 
         pivot['ESTADO'] = pivot['COCADA_MIN'].apply(_estado_cocada)
-        pivot['ROTACION'] = pivot['DELTA'].apply(_estado_delta)
+        pivot['ROTACION'] = pivot.apply(
+            lambda r: _estado_rotacion(r['DELTA'], r['COCADA_MIN'], 
+                                        max(r['EXTERIOR'], r['INTERIOR'])), axis=1
+        )
         pivot = pivot.reset_index()
 
         cocada_min_global = pivot['COCADA_MIN'].min()
