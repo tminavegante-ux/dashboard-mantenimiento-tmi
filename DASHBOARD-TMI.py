@@ -57,7 +57,6 @@ def cargar_datos_marcio():
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
 
-        # --- Lectura de hojas ---
         df_equipos     = conn.read(worksheet="EQUIPOS", ttl=0)
         df_horometro   = conn.read(worksheet="HOROMETROS", ttl=0)
         df_componentes = conn.read(worksheet="COMPONENTES", ttl=0)
@@ -65,7 +64,6 @@ def cargar_datos_marcio():
         df_engrase     = conn.read(worksheet="ENGRASE", ttl=0)
         df_paradas     = conn.read(worksheet="PARADAS-M", ttl=0)
 
-        # --- Normalizar columnas ---
         def _norm_cols(df):
             df.columns = [str(c).strip().upper() for c in df.columns]
             return df
@@ -251,6 +249,8 @@ def cargar_datos_marcio():
         df_horometro.loc[df_horometro["HRS_OPERADAS"] < 0, "HRS_OPERADAS"] = pd.NA
         df_horometro["MES_NUM"] = df_horometro["FECHA"].dt.month
         df_horometro["ANIO"]    = df_horometro["FECHA"].dt.year
+        df_horometro["PERIODO_MES"] = df_horometro["FECHA"].dt.strftime("%Y-%m")
+        df_horometro["MES_NOMBRE"] = df_horometro["FECHA"].dt.strftime("%B").str.capitalize()
 
         if "STATUS_EQUIPO" not in df_horometro.columns:
             df_horometro["STATUS_EQUIPO"] = np.where(
@@ -279,6 +279,7 @@ def cargar_datos_marcio():
         df_paradas["DURACION"] = _limpiar_horas(df_paradas["DURACION"])
         df_paradas["MES_NUM"]  = df_paradas["FECHA"].dt.month
         df_paradas["ANIO"]     = df_paradas["FECHA"].dt.year
+        df_paradas["PERIODO_MES"] = df_paradas["FECHA"].dt.strftime("%Y-%m")
         df_paradas["TIPO_UP"]  = (df_paradas["TIPO DE PARADA"]
                                    .astype(str).str.strip().str.upper())
 
@@ -328,7 +329,7 @@ if not estado_carga or df_equipos.empty:
 
 
 # ==========================================
-# 5. BARRA LATERAL
+# 5. BARRA LATERAL (filtros globales 4 primeras pestañas)
 # ==========================================
 st.sidebar.header("⚙️ Filtros de Control")
 
@@ -1093,30 +1094,139 @@ with tab_engrase:
 
 # ------------------------------------------
 # TAB 5: KPIs HORÓMETROS & PARADAS
-# (usa los MISMOS filtros del sidebar: equipo + mes)
+# (filtros PROPIOS dentro de la pestaña)
 # ------------------------------------------
 with tab_kpis:
-    st.header(f"📊 KPIs Horómetros & Paradas - {nombre_seleccionado}")
-    st.caption("Esta pestaña usa los **mismos filtros del sidebar** "
-               "(equipo y mes seleccionados).")
+    st.header("📊 KPIs Horómetros & Paradas")
+    st.caption("Los filtros de esta pestaña son **independientes** del sidebar "
+               "y solo afectan a los KPIs de Horómetros y Paradas.")
 
-    # --- Datos filtrados (equipo + mes del sidebar) ---
-    hor_mes = df_horometro[
-        (df_horometro["ID_EQUIPO"] == id_equipo_sel) &
-        (df_horometro["MES_NUM"] == mes_sel_num)
-    ].copy() if mes_sel_num else pd.DataFrame()
+    # ==================================================
+    # FILTROS DENTRO DE LA PESTAÑA
+    # ==================================================
+    col_f1, col_f2, col_f3 = st.columns(3)
 
-    par_mes = df_paradas.copy()
-    if "EQUIPO" in par_mes.columns:
-        par_mes = par_mes[par_mes["EQUIPO"] == id_equipo_sel]
-    if mes_sel_num and "MES_NUM" in par_mes.columns:
-        par_mes = par_mes[par_mes["MES_NUM"] == mes_sel_num]
+    with col_f1:
+        equipos_kpi = sorted(df_horometro["ID_EQUIPO"].dropna().unique()) \
+            if "ID_EQUIPO" in df_horometro.columns else []
+        eq_kpi = st.multiselect("Equipo", equipos_kpi, default=[],
+                                placeholder="Todos los equipos",
+                                key="kpi_eq")
+
+    with col_f2:
+        turnos_kpi = sorted(df_horometro["TURNO"].dropna().unique()) \
+            if "TURNO" in df_horometro.columns else []
+        turno_kpi = st.multiselect("Turno", turnos_kpi, default=[],
+                                    placeholder="Todos los turnos",
+                                    key="kpi_turno")
+
+    with col_f3:
+        # Tipo de equipo: derivado del ID (prefijo SC-/DU-/DP-)
+        if "ID_EQUIPO" in df_horometro.columns:
+            df_horometro["TIPO_EQUIPO"] = df_horometro["ID_EQUIPO"].astype(str).str.split("-").str[0].map({
+                "SC": "SCOOP", "DU": "DUMPER", "DP": "DUMPER"
+            }).fillna("OTRO")
+            tipos_kpi = sorted(df_horometro["TIPO_EQUIPO"].dropna().unique())
+        else:
+            tipos_kpi = []
+        tipo_kpi = st.multiselect("Tipo de equipo", tipos_kpi, default=[],
+                                   placeholder="Todos los tipos",
+                                   key="kpi_tipo")
+
+    # --- Filtro por período ---
+    st.markdown("##### 📅 Filtro por período")
+    modo_kpi = st.radio("Filtrar por:", ["Todo", "Semana", "Mes", "Rango de fechas"],
+                        horizontal=True, label_visibility="collapsed",
+                        key="kpi_modo")
+
+    semana_kpi = []
+    mes_kpi = []
+    rango_kpi = None
+
+    if modo_kpi == "Semana":
+        if "NUMERO SEMANA" in df_horometro.columns:
+            semanas_kpi = sorted(df_horometro["NUMERO SEMANA"]
+                                 .dropna().astype(int).unique())
+        else:
+            semanas_kpi = []
+        semana_kpi = st.multiselect("Semana(s)", semanas_kpi, default=[],
+                                     placeholder="Todas las semanas",
+                                     key="kpi_semana")
+
+    elif modo_kpi == "Mes":
+        if "PERIODO_MES" not in df_horometro.columns:
+            df_horometro["PERIODO_MES"] = df_horometro["FECHA"].dt.strftime("%Y-%m")
+            df_horometro["MES_NOMBRE"] = df_horometro["FECHA"].dt.strftime("%B").str.capitalize()
+            df_horometro["ANIO"] = df_horometro["FECHA"].dt.year
+        df_meses_kpi = (df_horometro.dropna(subset=["PERIODO_MES"])
+                        .drop_duplicates("PERIODO_MES")
+                        [["PERIODO_MES", "MES_NOMBRE", "ANIO"]]
+                        .sort_values("PERIODO_MES"))
+        opciones_mes_kpi = {
+            f"{r.PERIODO_MES} · {r.MES_NOMBRE} {int(r.ANIO)}": r.PERIODO_MES
+            for r in df_meses_kpi.itertuples()
+        }
+        labels_mes_kpi = st.multiselect("Mes(es)", list(opciones_mes_kpi.keys()),
+                                         default=[],
+                                         placeholder="Todos los meses",
+                                         key="kpi_mes")
+        mes_kpi = [opciones_mes_kpi[l] for l in labels_mes_kpi]
+
+    elif modo_kpi == "Rango de fechas":
+        if df_horometro["FECHA"].notna().any():
+            fmin = df_horometro["FECHA"].min().date()
+            fmax = df_horometro["FECHA"].max().date()
+            rango_kpi = st.date_input("Rango",
+                                       value=(fmin, fmax),
+                                       min_value=fmin,
+                                       max_value=fmax,
+                                       key="kpi_rango")
+
+    st.markdown("---")
+
+    # ==================================================
+    # APLICAR FILTROS A HORÓMETROS Y PARADAS
+    # ==================================================
+    hor_mes = df_horometro.copy()
+    par_mes = df_paradas.copy() if not df_paradas.empty else pd.DataFrame()
+
+    if eq_kpi:
+        hor_mes = hor_mes[hor_mes["ID_EQUIPO"].isin(eq_kpi)]
+        if "EQUIPO" in par_mes.columns:
+            par_mes = par_mes[par_mes["EQUIPO"].isin(eq_kpi)]
+
+    if turno_kpi and "TURNO" in hor_mes.columns:
+        hor_mes = hor_mes[hor_mes["TURNO"].isin(turno_kpi)]
+        if "TURNO" in par_mes.columns:
+            par_mes = par_mes[par_mes["TURNO"].isin(turno_kpi)]
+
+    if tipo_kpi and "TIPO_EQUIPO" in hor_mes.columns:
+        hor_mes = hor_mes[hor_mes["TIPO_EQUIPO"].isin(tipo_kpi)]
+
+    if semana_kpi and "NUMERO SEMANA" in hor_mes.columns:
+        hor_mes = hor_mes[hor_mes["NUMERO SEMANA"].isin(semana_kpi)]
+        if "FECHA" in par_mes.columns:
+            par_mes = par_mes[par_mes["FECHA"].dt.isocalendar().week
+                              .astype("Int64").isin(semana_kpi)]
+
+    if mes_kpi and "PERIODO_MES" in hor_mes.columns:
+        hor_mes = hor_mes[hor_mes["PERIODO_MES"].isin(mes_kpi)]
+        if "PERIODO_MES" in par_mes.columns:
+            par_mes = par_mes[par_mes["PERIODO_MES"].isin(mes_kpi)]
+
+    if isinstance(rango_kpi, tuple) and len(rango_kpi) == 2:
+        hor_mes = hor_mes[(hor_mes["FECHA"] >= pd.to_datetime(rango_kpi[0])) &
+                          (hor_mes["FECHA"] <= pd.to_datetime(rango_kpi[1]))]
+        if "FECHA" in par_mes.columns:
+            par_mes = par_mes[(par_mes["FECHA"] >= pd.to_datetime(rango_kpi[0])) &
+                              (par_mes["FECHA"] <= pd.to_datetime(rango_kpi[1]))]
 
     if hor_mes.empty and par_mes.empty:
-        st.info(f"No hay registros de horómetro ni de paradas para "
-                f"**{nombre_seleccionado}** en el mes seleccionado.")
+        st.info("No hay registros de horómetro ni de paradas con los filtros seleccionados.")
     else:
-        # --- KPIs por agregación ---
+        # --------------------------------------------------
+        # KPIs POR AGREGACIÓN
+        # --------------------------------------------------
         total_efec = float(hor_mes["HRS_OPERADAS"].sum()) if "HRS_OPERADAS" in hor_mes.columns else 0.0
         total_prog = float(hor_mes["HORAS_PROG"].sum()) if "HORAS_PROG" in hor_mes.columns else 0.0
         parada_mec = float(hor_mes["PARADA_MEC"].sum()) if "PARADA_MEC" in hor_mes.columns else 0.0
@@ -1142,13 +1252,15 @@ with tab_kpis:
         mtbf = total_efec / n_fallas if n_fallas else 0.0
         mttr = parada_mec / n_fallas if n_fallas else 0.0
 
-        # --- KPIs métricas ---
+        # --------------------------------------------------
+        # TARJETAS KPI
+        # --------------------------------------------------
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Horas Efectivas (Mes)", f"{total_efec:,.1f} H",
+        c1.metric("Horas Efectivas", f"{total_efec:,.1f} H",
                   f"{len(hor_mes)} registros")
-        c2.metric("Parada Mecánica (Mes)", f"{parada_mec:,.1f} H", "Correctivos")
-        c3.metric("Parada Operativa (Mes)", f"{parada_op:,.1f} H", "Operativas")
-        c4.metric("# Fallas (Mes)", f"{n_fallas}",
+        c2.metric("Parada Mecánica", f"{parada_mec:,.1f} H", "Correctivos")
+        c3.metric("Parada Operativa", f"{parada_op:,.1f} H", "Operativas")
+        c4.metric("# Fallas", f"{n_fallas}",
                   f"MTBF {mtbf:.1f} H | MTTR {mttr:.1f} H")
 
         c5, c6, c7, c8 = st.columns(4)
@@ -1162,7 +1274,9 @@ with tab_kpis:
 
         st.markdown("---")
 
-        # --- Gauges ---
+        # --------------------------------------------------
+        # GAUGES
+        # --------------------------------------------------
         g1, g2, g3 = st.columns(3)
 
         with g1:
@@ -1197,10 +1311,10 @@ with tab_kpis:
 
         with g3:
             if not par_mes.empty and "TIPO DE PARADA" in par_mes.columns:
-                kpi_tipo = (par_mes.groupby("TIPO DE PARADA")["DURACION"]
-                            .sum().reset_index())
-                fig = px.pie(kpi_tipo, values="DURACION", names="TIPO DE PARADA",
-                             hole=0.55,
+                kpi_tipo_par = (par_mes.groupby("TIPO DE PARADA")["DURACION"]
+                                .sum().reset_index())
+                fig = px.pie(kpi_tipo_par, values="DURACION",
+                             names="TIPO DE PARADA", hole=0.55,
                              color_discrete_sequence=["#00D4FF", "#00E676",
                                                        "#FFA726", "#B388FF"])
                 fig.update_layout(template="plotly_dark", height=250,
@@ -1210,7 +1324,9 @@ with tab_kpis:
             else:
                 st.info("Sin datos de paradas para el gráfico.")
 
-        # --- Barras + Pareto ---
+        # --------------------------------------------------
+        # BARRAS + PARETO
+        # --------------------------------------------------
         b1, b2 = st.columns([7, 5])
 
         with b1:
@@ -1258,7 +1374,9 @@ with tab_kpis:
             else:
                 st.info("Sin datos de paradas para el período.")
 
-        # --- Tendencia + Top 10 ---
+        # --------------------------------------------------
+        # TENDENCIA + TOP 10 FALLAS
+        # --------------------------------------------------
         t1, t2 = st.columns([7, 5])
 
         with t1:
@@ -1300,7 +1418,9 @@ with tab_kpis:
             else:
                 st.info("Sin paradas registradas.")
 
-        # --- Heatmap KPIs por equipo ---
+        # --------------------------------------------------
+        # HEATMAP KPIs POR EQUIPO
+        # --------------------------------------------------
         if not hor_mes.empty and all(c in hor_mes.columns for c in
                                      ["HORAS_PROG", "PARADA_MEC", "HRS_OPERADAS"]):
             heat_kpi = hor_mes.groupby("ID_EQUIPO").agg({
@@ -1333,12 +1453,14 @@ with tab_kpis:
 
         st.markdown("---")
 
-        # --- Sub-tabs de detalle ---
+        # --------------------------------------------------
+        # SUB-TABS DE DETALLE
+        # --------------------------------------------------
         st.markdown("## 📑 Registros de detalle (KPIs)")
         sub_hor, sub_par = st.tabs(["📋 Horómetros", "🛠️ Paradas (PARADAS-M)"])
 
         with sub_hor:
-            st.markdown("### 📋 Registro de Horómetros (filtros del sidebar)")
+            st.markdown("### 📋 Registro de Horómetros (filtros de la pestaña)")
             st.caption("Registros que alimentan los KPIs.")
 
             cols_hor = ["FECHA", "TURNO", "ID_EQUIPO", "H_INICIAL", "HFINAL",
@@ -1384,7 +1506,7 @@ with tab_kpis:
                 )
 
         with sub_par:
-            st.markdown("### 🛠️ Registro de Paradas (filtros del sidebar)")
+            st.markdown("### 🛠️ Registro de Paradas (filtros de la pestaña)")
             st.caption("Paradas que alimentan los KPIs.")
 
             if par_mes.empty:
