@@ -1,7 +1,14 @@
+# ============================================================
+#  DASHBOARD KPI MANTENIMIENTO — TMI 2026
+#  Hojas: EQUIPOS, HOROMETROS, COMPONENTES, NEUMATICOS,
+#         ENGRASE, PARADAS-M
+# ============================================================
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import os
 import calendar
 from streamlit_gsheets import GSheetsConnection
@@ -14,39 +21,65 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.sidebar.image("tmi2026.png", width=160)
+
+# Logo opcional (si no existe el archivo, no rompe)
+if os.path.exists("tmi2026.png"):
+    st.sidebar.image("tmi2026.png", width=160)
+
 st.title("CONTROL NEW MING 2026")
 st.markdown("---")
- 
+
+
 # ==========================================
-# 2. CARGA DE DATOS DESDE GOOGLE SHEETS
+# 2. FUNCIONES DE LIMPIEZA
+# ==========================================
+def _limpiar_horas(serie):
+    """'7.80 H' -> 7.80 ; tolerante a comas, vacíos y 'nan'."""
+    return (
+        serie.astype(str)
+        .str.replace("H", "", regex=False)
+        .str.replace(",", ".", regex=False)
+        .str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "None": pd.NA,
+                  "NONE": pd.NA, "NaN": pd.NA})
+        .pipe(pd.to_numeric, errors="coerce")
+    )
+
+
+# ==========================================
+# 3. CARGA DE DATOS DESDE GOOGLE SHEETS
 # ==========================================
 @st.cache_data(ttl=300, show_spinner="Cargando datos de Google Sheets...")
 def cargar_datos_marcio():
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
 
-        df_equipos = conn.read(worksheet="EQUIPOS", ttl=0)
-        df_horometro = conn.read(worksheet="HOROMETRO", ttl=0)
+        # --- Lectura de hojas (HOROMETROS en plural, PARADAS-M) ---
+        df_equipos     = conn.read(worksheet="EQUIPOS", ttl=0)
+        df_horometro   = conn.read(worksheet="HOROMETROS", ttl=0)
         df_componentes = conn.read(worksheet="COMPONENTES", ttl=0)
-        df_neumaticos = conn.read(worksheet="NEUMATICOS", ttl=0)
-        df_engrase = conn.read(worksheet="ENGRASE", ttl=0)
+        df_neumaticos  = conn.read(worksheet="NEUMATICOS", ttl=0)
+        df_engrase     = conn.read(worksheet="ENGRASE", ttl=0)
+        df_paradas     = conn.read(worksheet="PARADAS-M", ttl=0)
 
+        # --- Normalizar nombres de columnas (mayúsculas, sin espacios) ---
         def _norm_cols(df):
             df.columns = [str(c).strip().upper() for c in df.columns]
             return df
 
-        df_equipos = _norm_cols(df_equipos)
-        df_horometro = _norm_cols(df_horometro)
+        df_equipos     = _norm_cols(df_equipos)
+        df_horometro   = _norm_cols(df_horometro)
         df_componentes = _norm_cols(df_componentes)
-        df_neumaticos = _norm_cols(df_neumaticos)
-        df_engrase = _norm_cols(df_engrase)
+        df_neumaticos  = _norm_cols(df_neumaticos)
+        df_engrase     = _norm_cols(df_engrase)
+        df_paradas     = _norm_cols(df_paradas)
 
+        # --- Mapeo de variantes de nombres de columna ---
         MAPEO_COLUMNAS = {
             "NOMBRE": "NOMBR",
             "NOMBRE_EQUIPO": "NOMBR",
             "NOMBR_EQUIPO": "NOMBR",
-            "EQUIPO": "NOMBR",
+            "EQUIPO_NOMBRE": "NOMBR",
             "H_FINAL": "HFINAL",
             "HRS_FINAL": "HFINAL",
             "HORA_FINAL": "HFINAL",
@@ -55,28 +88,39 @@ def cargar_datos_marcio():
             "HORA_INICIAL": "H_INICIAL",
             "HOROMETRO_CAMBIO (PROYECTADO)": "HOROMETRO_CAMBIO(PROYECTADO)",
             "HOROMETRO_CAMBIO_PROYECTADO": "HOROMETRO_CAMBIO(PROYECTADO)",
+            "DESCRIPCIÓN DE LA FALLA": "DESCRIPCION DE LA FALLA",
+            "DESCRIPCIÓN": "DESCRIPCION DE LA FALLA",
+            "DESCRIPCION": "DESCRIPCION DE LA FALLA",
+            "TIPO DE PARADA": "TIPO DE PARADA",
+            "TIPO_PARADA": "TIPO DE PARADA",
+            "DURACIÓN": "DURACION",
         }
 
         def _rename_variants(df):
             return df.rename(columns={k: v for k, v in MAPEO_COLUMNAS.items()
-                                     if k in df.columns})
+                                      if k in df.columns})
 
-        df_equipos = _rename_variants(df_equipos)
-        df_horometro = _rename_variants(df_horometro)
+        df_equipos     = _rename_variants(df_equipos)
+        df_horometro   = _rename_variants(df_horometro)
         df_componentes = _rename_variants(df_componentes)
-        df_neumaticos = _rename_variants(df_neumaticos)
-        df_engrase = _rename_variants(df_engrase)
+        df_neumaticos  = _rename_variants(df_neumaticos)
+        df_engrase     = _rename_variants(df_engrase)
+        df_paradas     = _rename_variants(df_paradas)
 
+        # --- Validación de columnas requeridas ---
         requeridas = {
-            "EQUIPOS": (df_equipos, ["ID_EQUIPO", "NOMBR"]),
-            "HOROMETRO": (df_horometro, ["FECHA", "ID_EQUIPO", "H_INICIAL",
-                                          "HFINAL", "STATUS_EQUIPO", "TURNO"]),
+            "EQUIPOS":     (df_equipos,     ["ID_EQUIPO", "NOMBR"]),
+            "HOROMETROS":  (df_horometro,   ["FECHA", "ID_EQUIPO", "H_INICIAL",
+                                              "HFINAL", "STATUS_EQUIPO", "TURNO"]),
             "COMPONENTES": (df_componentes, ["ID_EQUIPO", "TIPO_COMPONENTE",
                                               "HOROMETRO_CAMBIO(PROYECTADO)"]),
-            "NEUMATICOS": (df_neumaticos, ["FECHA_MEDICION", "ID_EQUIPO",
-                                            "POSICION", "CARA", "COCADA"]),
-            "ENGRASE": (df_engrase, ["FECHA", "ID_EQUIPO", "PUNTOS_ENGRASADOS",
-                                      "PUNTOS_TOTALES", "CUMPLIDO"]),
+            "NEUMATICOS":  (df_neumaticos,  ["FECHA_MEDICION", "ID_EQUIPO",
+                                              "POSICION", "CARA", "COCADA"]),
+            "ENGRASE":     (df_engrase,     ["FECHA", "ID_EQUIPO", "PUNTOS_ENGRASADOS",
+                                              "PUNTOS_TOTALES", "CUMPLIDO"]),
+            "PARADAS-M":   (df_paradas,     ["FECHA", "TURNO", "TIPO DE PARADA",
+                                              "DURACION", "EQUIPO",
+                                              "DESCRIPCION DE LA FALLA"]),
         }
         for hoja, (df, cols) in requeridas.items():
             faltantes = [c for c in cols if c not in df.columns]
@@ -86,69 +130,105 @@ def cargar_datos_marcio():
                     f"Columnas encontradas: {list(df.columns)}"
                 )
 
+        # --- Normalizar identificadores ---
         for df in (df_equipos, df_horometro, df_componentes,
-                   df_neumaticos, df_engrase):
+                   df_neumaticos, df_engrase, df_paradas):
             if 'ID_EQUIPO' in df.columns:
                 df['ID_EQUIPO'] = df['ID_EQUIPO'].astype(str).str.strip()
+            if 'EQUIPO' in df.columns:
+                df['EQUIPO'] = df['EQUIPO'].astype(str).str.strip()
 
         if 'NOMBR' in df_equipos.columns:
             df_equipos['NOMBR'] = df_equipos['NOMBR'].astype(str).str.strip()
         if 'POSICION' in df_neumaticos.columns:
             df_neumaticos['POSICION'] = df_neumaticos['POSICION'].astype(str).str.strip()
         if 'CARA' in df_neumaticos.columns:
-            df_neumaticos['CARA'] = df_neumaticos['CARA'].astype(str).str.strip().str.upper()
+            df_neumaticos['CARA'] = (df_neumaticos['CARA'].astype(str)
+                                     .str.strip().str.upper())
 
+        # --- Conversión de fechas ---
         df_horometro['FECHA'] = pd.to_datetime(df_horometro['FECHA'], errors='coerce')
-        df_componentes['FECHA_INSTALACION'] = pd.to_datetime(
-            df_componentes['FECHA_INSTALACION'], errors='coerce')
+        if 'FECHA_INSTALACION' in df_componentes.columns:
+            df_componentes['FECHA_INSTALACION'] = pd.to_datetime(
+                df_componentes['FECHA_INSTALACION'], errors='coerce')
         df_neumaticos['FECHA_MEDICION'] = pd.to_datetime(
             df_neumaticos['FECHA_MEDICION'], errors='coerce')
         df_engrase['FECHA'] = pd.to_datetime(df_engrase['FECHA'], errors='coerce')
+        df_paradas['FECHA'] = pd.to_datetime(df_paradas['FECHA'],
+                                              errors='coerce', dayfirst=True)
 
-        df_horometro['HRS_OPERADAS'] = df_horometro['HFINAL'] - df_horometro['H_INICIAL']
+        # --- Derivadas HOROMETROS ---
+        df_horometro['HRS_OPERADAS'] = (df_horometro['HFINAL']
+                                        - df_horometro['H_INICIAL'])
         df_horometro.loc[df_horometro['HFINAL'].isna(), 'HRS_OPERADAS'] = pd.NA
         df_horometro.loc[df_horometro['HRS_OPERADAS'] < 0, 'HRS_OPERADAS'] = pd.NA
         df_horometro['MES_NUM'] = df_horometro['FECHA'].dt.month
-        df_horometro['ANIO'] = df_horometro['FECHA'].dt.year
+        df_horometro['ANIO']    = df_horometro['FECHA'].dt.year
 
+        # --- Derivadas ENGRASE ---
         df_engrase['MES_NUM'] = df_engrase['FECHA'].dt.month
-        df_engrase['ANIO'] = df_engrase['FECHA'].dt.year
+        df_engrase['ANIO']    = df_engrase['FECHA'].dt.year
         df_engrase['PCT_CUMPLIMIENTO'] = (
             df_engrase['PUNTOS_ENGRASADOS'] / df_engrase['PUNTOS_TOTALES'] * 100
         ).round(1)
 
+        # --- Derivadas PARADAS-M (limpieza de duración con "H") ---
+        df_paradas['DURACION'] = _limpiar_horas(df_paradas['DURACION'])
+        df_paradas['MES_NUM']  = df_paradas['FECHA'].dt.month
+        df_paradas['ANIO']     = df_paradas['FECHA'].dt.year
+
+        # Normalizar tipo de parada para clasificar
+        df_paradas['TIPO_UP'] = (df_paradas['TIPO DE PARADA']
+                                  .astype(str).str.strip().str.upper())
+
         return (df_equipos, df_horometro, df_componentes, df_neumaticos,
-                df_engrase, True, "Google Sheets")
+                df_engrase, df_paradas, True, "Google Sheets")
 
     except Exception as e:
-        df_vacio_eq = pd.DataFrame(columns=['ID_EQUIPO', 'NOMBR'])
-        df_vacio_ho = pd.DataFrame(columns=['FECHA', 'ID_EQUIPO', 'H_INICIAL', 'HFINAL',
-                                            'HRS_OPERADAS', 'MES_NUM', 'ANIO',
-                                            'STATUS_EQUIPO', 'TURNO'])
-        df_vacio_co = pd.DataFrame(columns=['ID_EQUIPO', 'TIPO_COMPONENTE',
-                                            'HOROMETRO_CAMBIO(PROYECTADO)'])
-        df_vacio_ne = pd.DataFrame(columns=['FECHA_MEDICION', 'ID_EQUIPO', 'POSICION',
-                                            'CARA', 'COCADA'])
-        df_vacio_en = pd.DataFrame(columns=['FECHA', 'ID_EQUIPO', 'TURNO', 'TECNICO',
-                                            'PUNTOS_ENGRASADOS', 'PUNTOS_TOTALES',
-                                            'TIPO_GRASA', 'CANTIDAD_GRASA_KG',
-                                            'OBSERVACIONES', 'CUMPLIDO',
-                                            'MES_NUM', 'ANIO', 'PCT_CUMPLIMIENTO'])
+        # --- Fallback: DataFrames vacíos con estructura mínima ---
+        df_vacio_eq  = pd.DataFrame(columns=['ID_EQUIPO', 'NOMBR'])
+        df_vacio_ho  = pd.DataFrame(columns=['FECHA', 'ID_EQUIPO', 'H_INICIAL',
+                                              'HFINAL', 'HRS_OPERADAS',
+                                              'MES_NUM', 'ANIO',
+                                              'STATUS_EQUIPO', 'TURNO'])
+        df_vacio_co  = pd.DataFrame(columns=['ID_EQUIPO', 'TIPO_COMPONENTE',
+                                              'HOROMETRO_CAMBIO(PROYECTADO)'])
+        df_vacio_ne  = pd.DataFrame(columns=['FECHA_MEDICION', 'ID_EQUIPO',
+                                              'POSICION', 'CARA', 'COCADA'])
+        df_vacio_en  = pd.DataFrame(columns=['FECHA', 'ID_EQUIPO', 'TURNO',
+                                              'TECNICO', 'PUNTOS_ENGRASADOS',
+                                              'PUNTOS_TOTALES', 'TIPO_GRASA',
+                                              'CANTIDAD_GRASA_KG', 'OBSERVACIONES',
+                                              'CUMPLIDO', 'MES_NUM', 'ANIO',
+                                              'PCT_CUMPLIMIENTO'])
+        df_vacio_par = pd.DataFrame(columns=['FECHA', 'TURNO', 'TIPO DE PARADA',
+                                              'DURACION', 'EQUIPO',
+                                              'DESCRIPCION DE LA FALLA',
+                                              'MES_NUM', 'ANIO', 'TIPO_UP'])
         return (df_vacio_eq, df_vacio_ho, df_vacio_co, df_vacio_ne,
-                df_vacio_en, False, str(e))
+                df_vacio_en, df_vacio_par, False, str(e))
 
 
-(df_equipos, df_horometro, df_componentes, df_neumaticos, df_engrase,
- estado_carga, detalle_error) = cargar_datos_marcio()
+# ==========================================
+# 4. LLAMADA Y VALIDACIÓN
+# ==========================================
+(df_equipos, df_horometro, df_componentes, df_neumaticos,
+ df_engrase, df_paradas, estado_carga, detalle_error) = cargar_datos_marcio()
 
 if not estado_carga or df_equipos.empty:
     st.error("❌ No se pudo cargar los datos desde Google Sheets")
     st.markdown(f"**Detalle Técnico:** {detalle_error}")
-    st.info("💡 Asegúrate de que el Google Sheet tenga las hojas EQUIPOS, HOROMETRO, COMPONENTES, NEUMATICOS y ENGRASE con las columnas correctas, y que esté compartido con el client_email de la cuenta de servicio.")
+    st.info(
+        "💡 Verifica que el Google Sheet tenga las hojas "
+        "**EQUIPOS, HOROMETROS, COMPONENTES, NEUMATICOS, ENGRASE y PARADAS-M** "
+        "con las columnas correctas, y que esté compartido con el client_email "
+        "de la cuenta de servicio."
+    )
     st.stop()
 
+
 # ==========================================
-# 3. BARRA LATERAL
+# 5. BARRA LATERAL
 # ==========================================
 st.sidebar.header("⚙️ Filtros de Control")
 
@@ -157,7 +237,8 @@ if st.sidebar.button("🔄 Refrescar datos", use_container_width=True):
     st.rerun()
 
 dicc_equipos = dict(zip(df_equipos['NOMBR'], df_equipos['ID_EQUIPO']))
-nombre_seleccionado = st.sidebar.selectbox("Seleccione el Equipo:", list(dicc_equipos.keys()))
+nombre_seleccionado = st.sidebar.selectbox("Seleccione el Equipo:",
+                                            list(dicc_equipos.keys()))
 id_equipo_sel = dicc_equipos[nombre_seleccionado]
 
 st.sidebar.markdown("---")
@@ -182,30 +263,36 @@ else:
 
 if mes_sel_num:
     df_h_filtrado_mes = df_horometro[df_horometro['MES_NUM'] == mes_sel_num]
-    df_h_filtrado_equipo = df_h_filtrado_mes[df_h_filtrado_mes['ID_EQUIPO'] == id_equipo_sel]
+    df_h_filtrado_equipo = df_h_filtrado_mes[
+        df_h_filtrado_mes['ID_EQUIPO'] == id_equipo_sel
+    ]
 else:
     df_h_filtrado_mes = pd.DataFrame()
     df_h_filtrado_equipo = pd.DataFrame()
 
+
 # ==========================================
-# 4. PESTAÑAS
+# 6. PESTAÑAS
 # ==========================================
-tab_horometros, tab_neumaticos, tab_componentes, tab_engrase = st.tabs([
+tab_horometros, tab_neumaticos, tab_componentes, tab_engrase, tab_kpis = st.tabs([
     "⏱️ Horómetros & Flota",
     "🛞 Control de Neumáticos",
     "⚙️ Gestión de Componentes",
     "🛢️ Control de Engrase",
+    "📊 KPIs Horómetros & Paradas",
 ])
 
+
 # ------------------------------------------
-# TAB 1: HORÓMETROS Y FLOTA
+# TAB 1: HORÓMETROS Y FLOTA (original)
 # ------------------------------------------
 with tab_horometros:
     st.header(f"Análisis de Utilización - {nombre_seleccionado}")
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
-        total_hrs = df_h_filtrado_equipo['HRS_OPERADAS'].sum() if not df_h_filtrado_equipo.empty else 0
+        total_hrs = (df_h_filtrado_equipo['HRS_OPERADAS'].sum()
+                     if not df_h_filtrado_equipo.empty else 0)
         st.metric("Horas Operadas (Mes Seleccionado)", f"{total_hrs:,.1f} Hrs")
     with kpi2:
         ultimo_horometro = df_horometro_equipo['HFINAL'].max()
@@ -269,7 +356,7 @@ with tab_horometros:
             )
 
     st.markdown("---")
-    # --- Gráficos: Desempeño Diario + Comparativa de Flota ---
+
     g1, g2 = st.columns(2)
 
     with g1:
@@ -318,11 +405,12 @@ with tab_horometros:
             st.plotly_chart(fig_barra, use_container_width=True)
         else:
             st.info("No hay datos de flota para este período.")
-        st.markdown("---")  
- # --- NUEVO: Rendimiento Mensual (12 meses fijos) ---
+
+    st.markdown("---")
+
+    # --- Rendimiento Mensual (12 meses fijos) ---
     st.subheader(f"Rendimiento Mensual - {nombre_seleccionado}")
-    df_equipo_todos = df_horometro_equipo.copy()
-    df_equipo_todos = df_equipo_todos.dropna(subset=['HRS_OPERADAS'])
+    df_equipo_todos = df_horometro_equipo.dropna(subset=['HRS_OPERADAS'])
 
     if not df_equipo_todos.empty:
         df_mensual = (df_equipo_todos
@@ -330,28 +418,22 @@ with tab_horometros:
                       .sum()
                       .reset_index())
 
-        # Año de referencia (el más reciente con datos)
         anio_ref = int(df_mensual['ANIO'].max())
         df_anio = df_mensual[df_mensual['ANIO'] == anio_ref].copy()
 
-        # Diccionario de abreviaturas
         ABREV_MES = {
             1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr",
             5: "May", 6: "Jun", 7: "Jul", 8: "Ago",
             9: "Set", 10: "Oct", 11: "Nov", 12: "Dic"
         }
 
-        # Eje X fijo: los 12 meses del año de referencia
         meses_eje = list(range(1, 13))
         etiquetas_eje = [ABREV_MES[m] for m in meses_eje]
 
-        # Mapear datos: para cada mes, la hora o 0 si no hay
         horas_por_mes = {m: 0 for m in meses_eje}
         for _, r in df_anio.iterrows():
             horas_por_mes[int(r['MES_NUM'])] = float(r['HRS_OPERADAS'])
 
-        # Colores: ámbar si es el mes seleccionado, gris azulado si tiene datos,
-        # transparente si no tiene datos (no se ve)
         colores = []
         etiquetas_texto = []
         for m in meses_eje:
@@ -362,7 +444,7 @@ with tab_horometros:
                 colores.append("#5A6B7D")
                 etiquetas_texto.append(f"{horas_por_mes[m]:.0f} h")
             else:
-                colores.append("rgba(0,0,0,0)")  # invisible
+                colores.append("rgba(0,0,0,0)")
                 etiquetas_texto.append("")
 
         fig_mensual = go.Figure()
@@ -375,7 +457,6 @@ with tab_horometros:
             width=0.5,
             hovertemplate="<b>%{x}</b><br>Horas: %{y:.0f}<extra></extra>"
         ))
-
         fig_mensual.update_layout(
             showlegend=False,
             xaxis_title="Mes",
@@ -383,17 +464,12 @@ with tab_horometros:
             height=280,
             margin=dict(l=40, r=20, t=30, b=40),
             bargap=0.4,
-            xaxis=dict(
-                categoryorder='array',
-                categoryarray=etiquetas_eje
-            )
+            xaxis=dict(categoryorder='array', categoryarray=etiquetas_eje)
         )
-
         st.plotly_chart(fig_mensual, use_container_width=True)
     else:
         st.info("Sin registros de horas para este equipo.")
 
-    st.markdown("---")
 
 # ------------------------------------------
 # TAB 2: NEUMÁTICOS
@@ -447,7 +523,6 @@ with tab_neumaticos:
         borde_rot = "#F6E05E" if rotacion.startswith("🔄") else "transparent"
         hor_txt = f"{horometro:,.0f} h" if pd.notna(horometro) else "—"
 
-        # Etiquetas: mostrar "—" si no hay dato
         ext_txt = f"{ext:.1f}" if pd.notna(ext) else "—"
         int_txt = f"{int_:.1f}" if pd.notna(int_) else "—"
         delta_txt = f"{delta:+.1f}" if pd.notna(delta) else "—"
@@ -489,7 +564,6 @@ with tab_neumaticos:
     if df_n_equipo.empty:
         st.info("No se registran inspecciones de neumáticos para este equipo.")
     else:
-        # Forzar COCADA numérico
         df_n_equipo = df_n_equipo.copy()
         df_n_equipo['COCADA'] = pd.to_numeric(df_n_equipo['COCADA'], errors='coerce')
 
@@ -498,22 +572,17 @@ with tab_neumaticos:
                   .tail(1))
 
         horometro_por_pos = (ultima.groupby('POSICION')['HOROMETRO_MAQUINA']
-                             .max().to_dict())
+                             .max().to_dict()) if 'HOROMETRO_MAQUINA' in ultima.columns else {}
 
         pivot = ultima.pivot_table(index='POSICION', columns='CARA',
                                     values='COCADA', aggfunc='last')
-        # Asegurar ambas columnas existan aunque estén vacías
         for c in ['EXTERIOR', 'INTERIOR']:
             if c not in pivot.columns:
                 pivot[c] = pd.NA
         pivot = pivot[['EXTERIOR', 'INTERIOR']]
 
-        # DELTA solo cuando AMBAS caras existen
         pivot['DELTA'] = (pivot['EXTERIOR'] - pivot['INTERIOR']).round(1)
-
-        # Mínimo ignorando NaN (solo la cara medida)
         pivot['COCADA_MIN'] = pivot[['EXTERIOR', 'INTERIOR']].min(axis=1, skipna=True)
-        # Máximo ignorando NaN
         pivot['COCADA_MAX'] = pivot[['EXTERIOR', 'INTERIOR']].max(axis=1, skipna=True)
 
         def _estado_cocada(mm):
@@ -528,7 +597,6 @@ with tab_neumaticos:
 
         def _estado_rotacion(delta, cocada_min, cocada_max):
             motivos = []
-            # Solo evaluar delta si AMBAS caras existen
             if pd.notna(delta) and abs(delta) > DELTA_ROTACION:
                 motivos.append("desgaste desigual")
             if pd.notna(cocada_max) and cocada_max <= COCADA_MINIMA:
@@ -544,7 +612,6 @@ with tab_neumaticos:
         )
         pivot = pivot.reset_index()
 
-        # KPIs: ignorando NaN
         valores_validos = pivot[['EXTERIOR', 'INTERIOR']].values.flatten()
         valores_validos = valores_validos[~pd.isna(valores_validos)]
         cocada_min_global = valores_validos.min() if len(valores_validos) else 0
@@ -660,7 +727,8 @@ with tab_neumaticos:
             template="plotly_dark",
             xaxis_title="Fecha de Medición",
             yaxis_title="Cocada (mm)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        xanchor="right", x=1),
             height=450
         )
         fig_trend.add_hline(y=COCADA_MINIMA, line_dash="dot", line_color="orange",
@@ -670,7 +738,7 @@ with tab_neumaticos:
         st.plotly_chart(fig_trend, use_container_width=True)
         st.caption("Líneas sólidas = Cara EXTERIOR · Líneas punteadas = Cara INTERIOR. "
                    "Si las líneas se cruzan, indica que el neumático fue rotado/volteado.")
-    
+
 
 # ------------------------------------------
 # TAB 3: COMPONENTES
@@ -681,9 +749,9 @@ with tab_componentes:
     df_c_equipo = df_componentes[df_componentes['ID_EQUIPO'] == id_equipo_sel].copy()
 
     if 'DEVOLVER_CAMBIO' in df_c_equipo.columns:
-        mask_devuelto = df_c_equipo['DEVOLVER_CAMBIO'].astype(str).str.strip().str.upper().isin(
-            ['SI', 'SÍ', 'S', 'YES', 'Y', 'TRUE', '1']
-        )
+        mask_devuelto = (df_c_equipo['DEVOLVER_CAMBIO']
+                         .astype(str).str.strip().str.upper()
+                         .isin(['SI', 'SÍ', 'S', 'YES', 'Y', 'TRUE', '1']))
         df_c_equipo = df_c_equipo[~mask_devuelto]
 
     df_c_equipo = df_c_equipo.dropna(subset=['HOROMETRO_CAMBIO(PROYECTADO)'])
@@ -740,7 +808,7 @@ with tab_componentes:
                     consumida = None
 
                 tipo = row['TIPO_COMPONENTE']
-                desc = row['DESCRIPCION']
+                desc = row.get('DESCRIPCION', '—')
 
                 with st.container(border=True):
                     cc1, cc2 = st.columns([3, 1])
@@ -774,6 +842,7 @@ with tab_componentes:
     else:
         st.info("No se registran componentes mayores activos asociados a este equipo.")
 
+
 # ------------------------------------------
 # TAB 4: ENGRASE
 # ------------------------------------------
@@ -787,7 +856,8 @@ with tab_engrase:
     if df_e_equipo.empty:
         st.info("No se registran engrases para este equipo.")
     else:
-        df_e_mes = df_e_equipo[df_e_equipo['MES_NUM'] == mes_sel_num] if mes_sel_num else df_e_equipo
+        df_e_mes = (df_e_equipo[df_e_equipo['MES_NUM'] == mes_sel_num]
+                    if mes_sel_num else df_e_equipo)
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
@@ -796,7 +866,9 @@ with tab_engrase:
             pct_prom = df_e_mes['PCT_CUMPLIMIENTO'].mean() if not df_e_mes.empty else 0
             st.metric("% Cumplimiento Promedio", f"{pct_prom:.1f}%")
         with k3:
-            kg_total = df_e_mes['CANTIDAD_GRASA_KG'].sum() if not df_e_mes.empty else 0
+            kg_total = (df_e_mes['CANTIDAD_GRASA_KG'].sum()
+                        if 'CANTIDAD_GRASA_KG' in df_e_mes.columns and not df_e_mes.empty
+                        else 0)
             st.metric("Grasa Consumida (Mes)", f"{kg_total:.1f} kg")
         with k4:
             ultimo_engrase = df_e_equipo['FECHA'].max()
@@ -811,10 +883,11 @@ with tab_engrase:
         st.subheader("Calendario de Cumplimiento del Mes")
 
         if mes_sel_num and not df_e_mes.empty:
-            anio_ref = df_e_mes['ANIO'].mode().iloc[0] if not df_e_mes.empty else pd.Timestamp.now().year
+            anio_ref = (df_e_mes['ANIO'].mode().iloc[0]
+                        if not df_e_mes.empty else pd.Timestamp.now().year)
             cal = calendar.Calendar(firstweekday=0)
             dias_mes = cal.monthdayscalendar(anio_ref, mes_sel_num)
-            
+
             resumen_dias = {}
             for _, r in df_e_mes.iterrows():
                 dia = r['FECHA'].day
@@ -852,7 +925,8 @@ with tab_engrase:
                         html_cal += (
                             f'<td style="padding:6px;background:{color};color:#fff;'
                             f'border-radius:4px;font-weight:bold;">'
-                            f'{dia}<br><span style="font-size:10px;">{icon} {info["pct"]:.0f}%</span></td>'
+                            f'{dia}<br><span style="font-size:10px;">'
+                            f'{icon} {info["pct"]:.0f}%</span></td>'
                         )
                     else:
                         html_cal += (
@@ -876,7 +950,8 @@ with tab_engrase:
             grasa_total=('CANTIDAD_GRASA_KG', 'sum')
         ).reset_index()
         df_mes['MES_NOMBRE'] = df_mes['MES_NUM'].map(dicc_meses)
-        df_mes['PERIODO'] = df_mes['MES_NOMBRE'] + " " + df_mes['ANIO'].astype(str)
+        df_mes['PERIODO'] = (df_mes['MES_NOMBRE'] + " "
+                             + df_mes['ANIO'].astype(str))
 
         fig_e = go.Figure()
         fig_e.add_trace(go.Bar(
@@ -900,7 +975,8 @@ with tab_engrase:
             yaxis=dict(title="Registros", side='left'),
             yaxis2=dict(title="% Cumplimiento", overlaying='y', side='right',
                         range=[0, 105]),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                        xanchor="right", x=1),
             height=400
         )
         st.plotly_chart(fig_e, use_container_width=True)
@@ -927,3 +1003,166 @@ with tab_engrase:
                 st.success("Todos los días hábiles del mes tienen registro de engrase.")
         else:
             st.info("Selecciona un mes con datos para verificar días sin engrase.")
+
+
+# ------------------------------------------
+# TAB 5: KPIs HORÓMETROS & PARADAS (NUEVO)
+# ------------------------------------------
+with tab_kpis:
+    st.header("📊 KPIs Horómetros & Paradas")
+    st.caption("KPIs calculados por agregación de horas "
+               "sobre el equipo y mes seleccionados en el sidebar.")
+
+    # 1. Horómetros del equipo/mes
+    hor_mes = df_horometro[
+        (df_horometro['ID_EQUIPO'] == id_equipo_sel) &
+        (df_horometro['MES_NUM'] == mes_sel_num)
+    ].copy() if mes_sel_num else pd.DataFrame()
+
+    # 2. Paradas del equipo/mes (cruce por EQUIPO)
+    par_mes = df_paradas.copy()
+    if 'EQUIPO' in par_mes.columns:
+        par_mes = par_mes[par_mes['EQUIPO'] == id_equipo_sel]
+    if mes_sel_num and 'MES_NUM' in par_mes.columns:
+        par_mes = par_mes[par_mes['MES_NUM'] == mes_sel_num]
+
+    if hor_mes.empty and par_mes.empty:
+        st.info(f"No hay registros de horómetro ni de paradas para "
+                f"**{nombre_seleccionado}** en el mes seleccionado.")
+    else:
+        # ==== KPIs por agregación ====
+        total_efec = float(hor_mes['HRS_OPERADAS'].sum()) if not hor_mes.empty else 0.0
+        n_registros = len(hor_mes) if not hor_mes.empty else 0
+
+        parada_mec = 0.0
+        parada_op = 0.0
+        n_fallas = 0
+
+        if not par_mes.empty and 'DURACION' in par_mes.columns:
+            # Clasificación por tipo: PM / MEC / MECANICO -> mecánica
+            mask_mec = par_mes['TIPO_UP'].str.contains("PM|MEC|MECAN", na=False)
+            parada_mec = float(par_mes.loc[mask_mec, 'DURACION'].sum())
+            parada_op = float(par_mes.loc[~mask_mec, 'DURACION'].sum())
+            n_fallas = len(par_mes)
+
+        total_prog = total_efec + parada_mec + parada_op
+        if total_prog == 0:
+            total_prog = total_efec
+
+        disp = ((total_prog - parada_mec) / total_prog * 100) if total_prog > 0 else 0.0
+        util = (total_efec / total_prog * 100) if total_prog > 0 else 0.0
+        horas_disponibles = total_prog - parada_mec
+        util_efec = ((total_efec / horas_disponibles * 100)
+                     if horas_disponibles > 0 else 0.0)
+        mtbf = total_efec / n_fallas if n_fallas else 0.0
+        mttr = parada_mec / n_fallas if n_fallas else 0.0
+
+        # ==== KPIs visuales ====
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Horas Efectivas", f"{total_efec:,.1f} H")
+        c2.metric("Parada Mecánica", f"{parada_mec:,.1f} H")
+        c3.metric("Parada Operativa", f"{parada_op:,.1f} H")
+        c4.metric("# Fallas", f"{n_fallas}",
+                  help=f"MTBF {mtbf:.1f} H | MTTR {mttr:.1f} H")
+
+        c5, c6, c7, c8 = st.columns(4)
+        c5.metric("Disponibilidad Mecánica", f"{disp:.1f}%",
+                  help=f"({horas_disponibles:.1f} H disp / {total_prog:.1f} H prog)")
+        c6.metric("Utilización", f"{util:.1f}%",
+                  help=f"({total_efec:.1f} H efec / {total_prog:.1f} H prog)")
+        c7.metric("Utilización Efectiva", f"{util_efec:.1f}%",
+                  help=f"({total_efec:.1f} H efec / {horas_disponibles:.1f} H disp)")
+        c8.metric("Registros Horómetro", f"{n_registros}")
+
+        st.markdown("---")
+
+        # ==== Gráficos ====
+        g1, g2 = st.columns(2)
+
+        with g1:
+            st.subheader("Horas Efectivas por Fecha")
+            if not hor_mes.empty:
+                hor_sorted = hor_mes.sort_values('FECHA')
+                fig = go.Figure()
+                fig.add_bar(x=hor_sorted['FECHA'],
+                            y=hor_sorted['HRS_OPERADAS'],
+                            name='Horas Efectivas',
+                            marker_color='#48BB78',
+                            text=hor_sorted['HRS_OPERADAS'],
+                            textposition='outside')
+                fig.update_traces(texttemplate='%{text:.1f} h')
+                fig.update_layout(template="plotly_dark",
+                                  xaxis_title="Fecha", yaxis_title="Horas",
+                                  height=350,
+                                  legend=dict(orientation="h", y=-0.2))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Sin registros de horómetro.")
+
+        with g2:
+            st.subheader("Pareto de Paradas")
+            if not par_mes.empty and 'TIPO DE PARADA' in par_mes.columns:
+                pareto = (par_mes.groupby('TIPO DE PARADA')['DURACION']
+                              .sum().reset_index()
+                              .sort_values('DURACION', ascending=False))
+                pareto['ACUM %'] = (pareto['DURACION'].cumsum()
+                                    / pareto['DURACION'].sum() * 100)
+
+                fig_p = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_p.add_trace(go.Bar(x=pareto['TIPO DE PARADA'],
+                                       y=pareto['DURACION'],
+                                       name='Horas',
+                                       marker_color='#F6AD55'),
+                                secondary_y=False)
+                fig_p.add_trace(go.Scatter(x=pareto['TIPO DE PARADA'],
+                                           y=pareto['ACUM %'],
+                                           mode='lines+markers',
+                                           name='Acum %',
+                                           line=dict(color='#4FD1C5', width=3)),
+                                secondary_y=True)
+                fig_p.update_layout(template="plotly_dark", height=350,
+                                    legend=dict(orientation="h", y=-0.2))
+                fig_p.update_yaxes(title_text="Horas", secondary_y=False)
+                fig_p.update_yaxes(title_text="% Acumulado", secondary_y=True,
+                                   range=[0, 105])
+                st.plotly_chart(fig_p, use_container_width=True)
+            else:
+                st.info("Sin datos de paradas para el período.")
+
+        # ==== Tablas ====
+        st.markdown("---")
+        st.subheader("📋 Registro de Horómetros")
+        if not hor_mes.empty:
+            cols_show = [c for c in ['FECHA', 'TURNO', 'H_INICIAL', 'HFINAL',
+                                      'HRS_OPERADAS', 'STATUS_EQUIPO']
+                         if c in hor_mes.columns]
+            show = hor_mes[cols_show].copy()
+            if 'FECHA' in show.columns:
+                show['FECHA'] = show['FECHA'].dt.strftime('%d/%m/%Y')
+            st.dataframe(show.sort_values('FECHA', ascending=False),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.info("Sin registros.")
+
+        st.subheader("🛠️ Registro de Paradas")
+        if not par_mes.empty:
+            cols_p = [c for c in ['FECHA', 'TURNO', 'TIPO DE PARADA',
+                                   'DURACION', 'EQUIPO',
+                                   'DESCRIPCION DE LA FALLA']
+                      if c in par_mes.columns]
+            show_p = par_mes[cols_p].copy()
+            if 'FECHA' in show_p.columns:
+                show_p['FECHA'] = show_p['FECHA'].dt.strftime('%d/%m/%Y')
+            st.dataframe(show_p.sort_values('FECHA', ascending=False),
+                         use_container_width=True, hide_index=True)
+
+            st.subheader("📈 Resumen por tipo de parada")
+            resumen = (par_mes.groupby('TIPO DE PARADA')
+                            .agg(N=('DURACION', 'count'),
+                                 Horas=('DURACION', 'sum'),
+                                 Promedio=('DURACION', 'mean'))
+                            .reset_index()
+                            .sort_values('Horas', ascending=False))
+            st.dataframe(resumen, use_container_width=True, hide_index=True)
+        else:
+            st.info("Sin paradas registradas en el período.")
