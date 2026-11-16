@@ -3,7 +3,7 @@
 # ============================================================
 import os
 
-# ---------- RUTA DEL EXCEL ----------
+# ---------- RUTA DEL EXCEL (solo para modo escritorio) ----------
 RUTA_EXCEL = r"C:\Users\USUARIO\Documents\NAVEGANTE_TMI\OneDrive\TMI_NAVEGANTE_PERSONAL\1-PROYECTO_DASHBOARD\APSS_PYTHON\CONTROL_NEW-MINING_2026 (2).xlsx"
 
 # ---------- LOGO ----------
@@ -34,6 +34,10 @@ HOJAS = {
     "engrase": "ENGRASE",
     "paradas": "PARADAS-M",
 }
+
+# ---------- GOOGLE SHEETS (para Streamlit Cloud) ----------
+GSHEETS_CONNECTION = "gsheets"   # debe coincidir con [connections.gsheets]
+GSHEETS_TTL = 0
 
 # ---------- UMBRALES NEUMÁTICOS ----------
 NEUMATICOS = {
