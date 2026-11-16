@@ -1,15 +1,14 @@
 # ============================================================
-#  CARGA DEL EXCEL + MAPEOS DE COLUMNAS
+#  CARGA DE DATOS — GOOGLE SHEETS + MAPEOS DE COLUMNAS
 # ============================================================
-import os
 import pandas as pd
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
-from config.settings import RUTA_EXCEL, HOJAS, CACHE_TTL
+from config.settings import HOJAS, CACHE_TTL, GSHEETS_CONNECTION, GSHEETS_TTL
 from core.cleaning import normalizar_columnas
 
 
-# ---------- MAPEOS (fáciles de editar si cambia el Excel) ----------
 MAPEO_HOROMETRO = {
     "NUMERO SEMANA": "NUMERO SEMANA",
     "TURNO": "TURNO",
@@ -65,48 +64,34 @@ MAPEO_GENERAL = {
 }
 
 
-def _aplicar_mapeo(df: pd.DataFrame, mapeo: dict) -> pd.DataFrame:
+def _aplicar_mapeo(df, mapeo):
     return df.rename(columns={k: v for k, v in mapeo.items() if k in df.columns})
 
 
-def _leer_hoja(sheet_name: str) -> pd.DataFrame:
-    return pd.read_excel(RUTA_EXCEL, sheet_name=sheet_name, engine="openpyxl")
-
-
-@st.cache_data(ttl=CACHE_TTL, show_spinner="Cargando datos del Excel...")
+@st.cache_data(ttl=CACHE_TTL, show_spinner="Cargando datos de Google Sheets...")
 def cargar_datos():
-    """
-    Devuelve una tupla (df_equipos, df_horometro, df_componentes,
-    df_neumaticos, df_engrase, df_paradas, ok, mensaje).
-    """
     try:
-        if not os.path.exists(RUTA_EXCEL):
-            raise FileNotFoundError(f"No se encontró el archivo: {RUTA_EXCEL}")
+        conn = st.connection(GSHEETS_CONNECTION, type=GSheetsConnection)
 
-        # 1) Lectura cruda
-        df_eq = _leer_hoja(HOJAS["equipos"])
-        df_ho = _leer_hoja(HOJAS["horometros"])
-        df_co = _leer_hoja(HOJAS["componentes"])
-        df_ne = _leer_hoja(HOJAS["neumaticos"])
-        df_en = _leer_hoja(HOJAS["engrase"])
-        df_pa = _leer_hoja(HOJAS["paradas"])
+        df_eq = conn.read(worksheet=HOJAS["equipos"],     ttl=GSHEETS_TTL)
+        df_ho = conn.read(worksheet=HOJAS["horometros"],  ttl=GSHEETS_TTL)
+        df_co = conn.read(worksheet=HOJAS["componentes"], ttl=GSHEETS_TTL)
+        df_ne = conn.read(worksheet=HOJAS["neumaticos"],  ttl=GSHEETS_TTL)
+        df_en = conn.read(worksheet=HOJAS["engrase"],     ttl=GSHEETS_TTL)
+        df_pa = conn.read(worksheet=HOJAS["paradas"],     ttl=GSHEETS_TTL)
 
-        # 2) Normalizar encabezados
         for df in (df_eq, df_ho, df_co, df_ne, df_en, df_pa):
             normalizar_columnas(df)
 
-        # 3) Mapeos
         df_ho = _aplicar_mapeo(df_ho, MAPEO_HOROMETRO)
         df_pa = _aplicar_mapeo(df_pa, MAPEO_PARADAS)
         df_co = _aplicar_mapeo(df_co, MAPEO_GENERAL)
         df_ne = _aplicar_mapeo(df_ne, MAPEO_GENERAL)
         df_en = _aplicar_mapeo(df_en, MAPEO_GENERAL)
 
-        # 4) Descartar columna residual
         if "COLUMNA1" in df_ho.columns:
             df_ho = df_ho.drop(columns=["COLUMNA1"])
 
-        # 5) Validaciones mínimas
         if "ID_EQUIPO" not in df_eq.columns or "NOMBRE" not in df_eq.columns:
             raise ValueError(
                 f"Hoja 'EQUIPOS' debe tener ID_EQUIPO y NOMBRE. "
@@ -129,7 +114,7 @@ def cargar_datos():
         if "DESCRIPCION DE LA FALLA" not in df_pa.columns:
             df_pa["DESCRIPCION DE LA FALLA"] = ""
 
-        return (df_eq, df_ho, df_co, df_ne, df_en, df_pa, True, "Excel local")
+        return (df_eq, df_ho, df_co, df_ne, df_en, df_pa, True, "Google Sheets")
 
     except Exception as e:
         vacio = pd.DataFrame()
